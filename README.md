@@ -15,9 +15,13 @@ Built to be read in a few seconds. It answers two questions and stays quiet othe
 | **Eat next** | Which fruit to eat now, and what comes after it |
 | **Ventilation** | Whether any fan is running, or a pod with no fan needs venting by hand |
 | **Crew actions** | Anything else that needs a person (sensor stopped, condensation, battery, spoilage seen by the camera). Says *No action needed* most of the time, on purpose |
-| **Pod tiles** | One per pod, in fixed positions: the fruit, its eat order, a big readiness word (Wait, Soon, Ready, Eat now) with a four-step bar, the fan state, and one small ethylene line |
+| **Pod tiles** | One per pod, in fixed positions: the fruit as an icon in a spacecraft porthole, its eat order, a big readiness word (Wait, Soon, Ready, Eat now) with a four-step bar, the fan state, and one small ethylene line |
 
 Click a tile to open that pod in the ethylene monitor.
+
+**Always one screen.** The crew view never scrolls, from a phone to a projector. Each tile is a CSS size container, so its text and porthole scale with the space it gets, and the least important detail (the ethylene line, then the stage labels) drops out first when space is short. Landscape screens show the pods in one row; portrait screens show a 2 x 2 block.
+
+**Fruit icons, not names.** Fruits are shown as icons so they can be recognised at a glance; the name stays in a hover tooltip and for screen readers. The rim of the porthole turns amber when that fruit should be eaten today.
 
 ### Ethylene monitor
 
@@ -71,12 +75,17 @@ Switch the top bar to **Live**.
 index.html        layout
 css/console.css   display tokens (night and day), layout, lamp styles
 js/config.js      every threshold, the pods, sensor and camera settings
+js/icons.js       fruit icons (IconPark, Apache 2.0)
 js/model.js       Series (temperature correction, rates) and the rule set
 js/data.js        Experiment 3 reconstruction, simulated pods, CSV import
 js/charts.js      canvas strip charts and sparklines
 js/live.js        DGS2 Web Serial reader and XIAO camera client
 js/app.js         wiring, replay clock, rendering
 ```
+
+## Credits
+
+Fruit icons: [IconPark](https://github.com/bytedance/IconPark) Outline by ByteDance, Apache License 2.0 (banana, apple-one, tomato, avocado), inlined unmodified in `js/icons.js`. Interface icons: [Phosphor](https://phosphoricons.com), MIT.
 
 ## Open items
 

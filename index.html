@@ -22,8 +22,8 @@
     </div>
 
     <nav class="tabs" role="tablist" aria-label="Screens" id="viewTabs">
-      <button type="button" role="tab" data-view="crew" aria-selected="true" aria-controls="crewView">Crew view</button>
-      <button type="button" role="tab" data-view="monitor" aria-selected="false" aria-controls="monitorView">Ethylene monitor</button>
+      <button type="button" role="tab" data-view="crew" aria-selected="true" aria-controls="crewView"><span class="lbl-l">Crew view</span><span class="lbl-s">Crew</span></button>
+      <button type="button" role="tab" data-view="monitor" aria-selected="false" aria-controls="monitorView"><span class="lbl-l">Ethylene monitor</span><span class="lbl-s">Monitor</span></button>
     </nav>
 
     <div class="clocks">
@@ -43,12 +43,17 @@
     <section class="brief" aria-label="Summary">
       <div class="brief-cell brief-next">
         <div class="bk">Eat next</div>
-        <div class="bv" id="nextFruit">N/A</div>
-        <div class="bs" id="nextSub"></div>
+        <div class="hero">
+          <span id="nextIcon"></span>
+          <div class="hero-txt">
+            <div class="bv" id="nextFruit">N/A</div>
+            <div class="bs" id="nextSub"></div>
+          </div>
+        </div>
       </div>
       <div class="brief-cell brief-vent">
         <div class="bk">Ventilation</div>
-        <div class="bv bv-sm" id="ventSum">N/A</div>
+        <div class="bv" id="ventSum">N/A</div>
         <div class="bs" id="ventSub"></div>
       </div>
       <div class="brief-cell brief-act">
@@ -212,6 +217,7 @@
 <div class="drop" id="drop" hidden><p>Drop the logging script CSV to replay it as POD-1</p></div>
 
 <script src="js/config.js"></script>
+<script src="js/icons.js"></script>
 <script src="js/model.js"></script>
 <script src="js/data.js"></script>
 <script src="js/charts.js"></script>

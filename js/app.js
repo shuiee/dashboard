@@ -177,8 +177,8 @@
       b.className = 'pod';
       b.setAttribute('aria-pressed', String(k === S.sel));
       b.innerHTML =
-        '<div class="pod-top"><span class="pod-id">' + pc.id + '</span><span class="pod-fruit">' + pc.fruit +
-        '</span><span class="status" data-f="status"></span></div>' +
+        '<div class="pod-top">' + F.fruitIcon(pc) + '<span class="pod-id">' + pc.id + '</span>' +
+        '<span class="status" data-f="status"></span></div>' +
         '<div class="pod-sub"><b data-f="label"></b>, ' + pc.note + '</div>' +
         '<div class="pod-main"><span class="big" data-f="delta"></span>' +
         '<span class="kv"><span class="k">Rate</span><span data-f="rate"></span></span></div>' +
@@ -240,6 +240,9 @@
   /* ================= render ================= */
   const unit = (v, u) => v + '<small>' + u + '</small>';
 
+  /** Inline fruit icon plus pod ID, used wherever a fruit would have been named. */
+  const who = pc => F.fruitIcon(pc) + ' ' + pc.id;
+
   /** 'wait' | 'soon' | 'ready' | 'now' | 'spoiled', or null when nothing is loaded. */
   function stageOf(v) {
     if (!v || v.offline || !v.st || !v.st.loaded || v.st.stage == null) return null;
@@ -281,14 +284,14 @@
     const out = [];
     views.forEach(v => {
       if (v.offline || !v.st) return;
-      const f = v.st.flags, name = v.pc.fruit, id = v.pc.id;
-      if (f.CAM === 'warning') out.push({ sev: 'WARN', text: 'Inspect the ' + name, sub: id + ' camera sees possible spoilage' });
-      if (f.DATA === 'warning') out.push({ sev: 'WARN', text: 'Check the ' + id + ' sensor', sub: 'Reading out of range' });
-      if (f.TEMP === 'warning' || f.TEMP === 'caution') out.push({ sev: f.TEMP === 'warning' ? 'WARN' : 'CAUT', text: 'Check ' + id + ' temperature', sub: fmt.num(v.st.temp, 1) + ' °C, outside cabin range' });
-      if (f.DATA === 'caution') out.push({ sev: 'CAUT', text: id + ' has stopped reporting', sub: 'Check the sensor cable or battery' });
-      if (f.RH === 'caution') out.push({ sev: 'CAUT', text: 'Wipe condensation in ' + id, sub: 'Humidity ' + fmt.num(v.st.rh, 0) + ' %RH, mould risk' });
+      const f = v.st.flags, id = who(v.pc);
+      if (f.CAM === 'warning') out.push({ sev: 'WARN', text: 'Inspect ' + id, sub: 'Camera sees possible spoilage' });
+      if (f.DATA === 'warning') out.push({ sev: 'WARN', text: 'Check sensor ' + id, sub: 'Reading out of range' });
+      if (f.TEMP === 'warning' || f.TEMP === 'caution') out.push({ sev: f.TEMP === 'warning' ? 'WARN' : 'CAUT', text: 'Check temperature ' + id, sub: fmt.num(v.st.temp, 1) + ' °C, outside cabin range' });
+      if (f.DATA === 'caution') out.push({ sev: 'CAUT', text: id + ' stopped reporting', sub: 'Check the sensor cable or battery' });
+      if (f.RH === 'caution') out.push({ sev: 'CAUT', text: 'Wipe condensation ' + id, sub: 'Humidity ' + fmt.num(v.st.rh, 0) + ' %RH, mould risk' });
       if (f.PWR === 'caution') out.push({ sev: 'CAUT', text: 'Charge ' + id, sub: 'Battery estimate under a day' });
-      if (f.CAM === 'caution') out.push({ sev: 'CAUT', text: 'Camera link lost', sub: id + ' frames are not arriving' });
+      if (f.CAM === 'caution') out.push({ sev: 'CAUT', text: 'Camera link lost ' + id, sub: 'Frames are not arriving' });
     });
     return out;
   }
@@ -303,9 +306,9 @@
       b.className = 'tile';
       b.setAttribute('aria-label', pc.fruit + ', ' + pc.id + '. Open in the ethylene monitor');
       b.innerHTML =
-        '<div class="tile-top">' +
-        '<div class="tile-head"><span class="tile-fruit">' + pc.fruit + '</span><span class="tile-pod">' + pc.id + '</span></div>' +
-        '<div class="tile-rank" data-f="rank"></div>' +
+        '<div class="tile-in">' +
+        '<div class="tile-top">' + F.fruitIcon(pc, { porthole: true }) +
+        '<div class="tile-id"><div class="tile-pod">' + pc.id + '</div><div class="tile-rank" data-f="rank"></div></div>' +
         '</div>' +
         '<div class="tile-mid">' +
         '<div class="stage"><div class="stage-word" data-f="word"></div><div class="stage-label" data-f="label"></div></div>' +
@@ -315,6 +318,7 @@
         '<div class="tile-bot">' +
         '<div class="tile-vent"><i class="ph ph-fan" aria-hidden="true"></i><div><div class="vent-word" data-f="vent"></div><div class="vent-sub" data-f="ventSub"></div></div></div>' +
         '<div class="tile-gas"><div><div class="gas-k">Ethylene</div><div class="gas-v" data-f="gas"></div></div><canvas data-f="spark" aria-hidden="true"></canvas></div>' +
+        '</div>' +
         '</div>';
       b.addEventListener('click', () => { if (b.dataset.offline !== '1') { select(k); setView('monitor'); } });
       const f = {};
@@ -325,7 +329,8 @@
   }
 
   const setText = (el, s) => { if (el.textContent !== s) el.textContent = s; };
-  const setHtml = (el, s) => { if (el.innerHTML !== s) el.innerHTML = s; };
+  // Compare with what we last wrote, not innerHTML: the browser re-serialises SVG differently.
+  const setHtml = (el, s) => { if (el._h !== s) { el._h = s; el.innerHTML = s; } };
 
   function renderCrew(views, ranked, rank) {
     const n = ranked.length;
@@ -347,7 +352,7 @@
       else { const sg = cfg.eat.stages[v.st.stage]; word = sg.word; label = sg.label; idx = v.st.stage; }
       setText(f.word, word);
       setText(f.label, label);
-      setHtml(f.rank, rank[k] ? 'Eat order <b>' + rank[k] + '</b> of ' + n : '&nbsp;');
+      setHtml(f.rank, rank[k] ? '<span>Eat order</span> <b>' + rank[k] + '</b> <span>of ' + n + '</span>' : '&nbsp;');
       [...f.meter.children].forEach((s, m) => { s.className = m < idx ? 'on' : m === idx ? 'cur' : ''; });
       [...f.meterk.children].forEach((s, m) => { s.className = m === idx ? 'cur' : ''; });
       setText(f.vent, vs.word);
@@ -363,42 +368,49 @@
     });
 
     // Eat next
-    const next = $('nextFruit').parentElement;
+    const next = $('nextFruit').closest('.brief-cell');
     const top = ranked[0];
+    let iconKey = '';
     if (!top) {
       setText($('nextFruit'), S.mode === 'live' ? 'Waiting for data' : 'Nothing loaded');
       setText($('nextSub'), S.mode === 'live' ? 'Connect the sensor and press Mark load when the produce goes in.' : '');
       next.dataset.sev = '';
     } else {
       const st = stageOf(top.v), pc = top.v.pc;
-      const second = ranked[1] && ['ready', 'now', 'spoiled'].includes(stageOf(ranked[1].v)) ? ranked[1].v.pc.fruit : null;
+      const second = ranked[1] && ['ready', 'now', 'spoiled'].includes(stageOf(ranked[1].v)) ? ranked[1].v.pc : null;
       if (st === 'spoiled') {
-        setText($('nextFruit'), 'Check the ' + pc.fruit);
-        setText($('nextSub'), pc.id + ': the camera sees possible spoilage. Inspect it before eating.');
+        iconKey = pc.id;
+        setText($('nextFruit'), 'Inspect first');
+        setHtml($('nextSub'), pc.id + ': the camera sees possible spoilage.');
         next.dataset.sev = 'warning';
       } else if (st === 'ready' || st === 'now') {
-        setText($('nextFruit'), pc.fruit);
-        setText($('nextSub'), pc.id + ', ' + cfg.eat.stages[top.v.st.stage].label.toLowerCase() + '. ' +
-          (second ? 'Then the ' + second + '.' : 'Nothing else is ready yet.'));
+        iconKey = pc.id;
+        setText($('nextFruit'), cfg.eat.stages[top.v.st.stage].label);
+        setHtml($('nextSub'), pc.id + '. ' + (second ? 'Then ' + who(second) + '.' : 'Nothing else is ready yet.'));
         next.dataset.sev = st === 'now' ? 'caution' : '';
       } else {
         setText($('nextFruit'), 'Nothing ready');
-        setText($('nextSub'), 'The ' + pc.fruit + ' will be ready first.');
+        setHtml($('nextSub'), 'First ready: ' + who(pc));
         next.dataset.sev = '';
       }
+    }
+    if (S.heroIcon !== iconKey) {
+      S.heroIcon = iconKey;
+      $('nextIcon').innerHTML = iconKey ? F.fruitIcon(top.v.pc, { porthole: true }) : '';
     }
 
     // Ventilation
     const on = [], need = [];
-    views.forEach(v => { const vs = ventState(v); if (vs.key === 'on') on.push(v.pc.fruit); if (vs.key === 'need') need.push(v); });
+    views.forEach(v => { const vs = ventState(v); if (vs.key === 'on') on.push(v.pc); if (vs.key === 'need') need.push(v.pc); });
+    const list = pcs => pcs.map(who).join(', ');
     if (on.length) {
-      setText($('ventSum'), (on.length > 1 ? 'Fans on: ' : 'Fan on: ') + on.join(', '));
-      setText($('ventSub'), need.length ? 'Also vent the ' + need.map(v => v.pc.fruit).join(' and ') + ' pod by hand.' : 'Automatic, about 2 minutes. Nothing to do.');
+      setText($('ventSum'), on.length > 1 ? 'Fans on' : 'Fan on');
+      setHtml($('ventSub'), list(on) + (need.length ? '. Also vent ' + list(need) + ' by hand.' : '. Automatic, about 2 min. Nothing to do.'));
     } else if (need.length) {
-      setText($('ventSum'), 'Vent the ' + need.map(v => v.pc.fruit).join(', '));
-      setText($('ventSub'), 'No fan fitted. Open the pod vent for about 2 minutes.');
+      setText($('ventSum'), 'Vent by hand');
+      setHtml($('ventSub'), list(need) + ' has no fan. Open its vent for about 2 min.');
     } else {
-      setText($('ventSum'), 'All pods sealed');
+      setText($('ventSum'), 'All sealed');
       setText($('ventSub'), 'No venting needed right now.');
     }
     $('ventSum').parentElement.dataset.sev = need.length ? 'advisory' : on.length ? 'on' : '';
@@ -417,7 +429,7 @@
       acts.slice(0, 4).forEach(a => {
         const li = document.createElement('li'); li.className = 'act';
         const sv = document.createElement('span'); sv.className = 'sev sev-' + a.sev; sv.textContent = a.sev;
-        const tx = document.createElement('span'); tx.textContent = a.text;
+        const tx = document.createElement('span'); tx.innerHTML = a.text;
         const sm = document.createElement('small'); sm.textContent = a.sub; tx.appendChild(sm);
         li.append(sv, tx);
         ul.appendChild(li);
@@ -688,7 +700,7 @@
 
   function renderHeader() {
     const pc = cfg.pods[S.sel];
-    $('selTitle').textContent = pc.id + ' ' + pc.fruit;
+    $('selTitle').innerHTML = F.fruitIcon(pc) + ' ' + pc.id;
     const label = S.mode === 'live' ? (S.sel === 0 ? 'Live DGS2' : 'Not connected') : S.pods[S.sel].label;
     $('selSource').textContent = label + ', ' + pc.note + (pc.fan ? ', fan fitted' : ', no fan');
     if (S.mode === 'replay') {
@@ -718,9 +730,9 @@
     if (S.view === 'crew') {
       renderCrew(views, ranked, rank);
     } else {
-      $('eatOrder').textContent = ranked.length
-        ? 'Eat first: ' + ranked.map(o => cfg.pods[o.k].fruit).join(', ')
-        : 'Eat first: waiting for data';
+      setHtml($('eatOrder'), ranked.length
+        ? 'Eat first: ' + ranked.map(o => F.fruitIcon(cfg.pods[o.k])).join(' ')
+        : 'Eat first: waiting for data');
       renderPods(views, rank);
       renderCW(views);
       renderEvents(events);
