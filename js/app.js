@@ -8,7 +8,6 @@
   const cfg = F.config;
   const R = cfg.rules;
   const fmt = F.fmt;
-  const COLS = F.rules.COLS;
   const $ = id => document.getElementById(id);
 
   const store = {
@@ -24,7 +23,6 @@
     duration: cfg.run.durationS,
     runStartMs: Date.parse(cfg.run.start),
     sel: 0,
-    range: 'all',
     hoverT: null,
     ackT: -Infinity,
     pods: [],
@@ -162,84 +160,38 @@
   }
 
   function xRange(t) {
-    if (S.range === 'all') return S.mode === 'replay' ? [0, S.duration] : [0, Math.max(t, 600)];
-    const W = Number(S.range);
-    return [Math.max(0, t - W), Math.max(t, W)];
+    return S.mode === 'replay' ? [0, S.duration] : [0, Math.max(t, 600)];
   }
 
   /* ================= DOM build ================= */
-  function buildPods() {
-    const wrap = $('pods');
+  function buildPodPick() {
+    const wrap = $('podPick');
     wrap.innerHTML = '';
-    S.podEls = cfg.pods.map((pc, k) => {
+    S.pickEls = cfg.pods.map((pc, k) => {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'pod';
-      b.setAttribute('aria-pressed', String(k === S.sel));
-      b.innerHTML =
-        '<div class="pod-top">' + F.fruitIcon(pc) + '<span class="pod-id">' + pc.id + '</span>' +
-        '<span class="status" data-f="status"></span></div>' +
-        '<div class="pod-sub"><b data-f="label"></b>, ' + pc.note + '</div>' +
-        '<div class="pod-main"><span class="big" data-f="delta"></span>' +
-        '<span class="kv"><span class="k">Rate</span><span data-f="rate"></span></span></div>' +
-        '<canvas class="pod-spark" data-f="spark" aria-hidden="true"></canvas>' +
-        '<div class="pod-foot">' +
-        '<span class="kv"><span class="k">T</span><span data-f="temp"></span></span>' +
-        '<span class="kv"><span class="k">RH</span><span data-f="rh"></span></span>' +
-        '<span class="kv"><span class="k">Fan</span><span data-f="fan"></span></span>' +
-        '<span class="kv"><span class="k">Pwr</span><span data-f="pwr"></span></span>' +
-        '<span class="kv"><span class="k">Eat</span><span data-f="eat" class="eat"></span></span>' +
-        '</div>';
+      b.className = 'pp';
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', String(k === S.sel));
+      b.setAttribute('aria-label', pc.fruit + ', ' + pc.id);
+      b.innerHTML = F.fruitIcon(pc) + '<span>' + pc.id + '</span>';
       b.addEventListener('click', () => select(k));
-      const f = {};
-      b.querySelectorAll('[data-f]').forEach(e => { f[e.dataset.f] = e; });
       wrap.appendChild(b);
-      return { b, f };
+      return b;
     });
-  }
-
-  function buildCW() {
-    const g = $('cwGrid');
-    g.innerHTML = '';
-    S.cwEls = cfg.pods.map((pc, k) => {
-      const row = document.createElement('div');
-      row.className = 'cw-row';
-      row.setAttribute('role', 'row');
-      row.setAttribute('aria-selected', String(k === S.sel));
-      row.innerHTML = '<span class="rl" role="rowheader">' + pc.id + '</span>' +
-        COLS.map(c => '<span class="ann" role="cell" data-c="' + c + '" title="' + F.rules.COL_NAMES[c] + '">' + c + '</span>').join('');
-      row.addEventListener('click', () => select(k));
-      g.appendChild(row);
-      const tiles = {};
-      row.querySelectorAll('.ann').forEach(e => { tiles[e.dataset.c] = e; });
-      return { row, tiles };
-    });
-  }
-
-  const READOUTS = [
-    ['base', 'Baseline'], ['delta', 'Rise, corrected'], ['tcorr', 'Temp correction'], ['rate30', 'Rate, 30 min'],
-    ['accel', '15 min / hour before'], ['vent', 'Vent logic'], ['tag', 'Time tag'], ['data', 'Samples'],
-  ];
-  function buildReadouts() {
-    const dl = $('readouts');
-    dl.innerHTML = READOUTS.map(([k, label]) =>
-      '<div class="ro"><dt>' + label + '</dt><dd id="ro_' + k + '">N/A</dd></div>').join('');
   }
 
   function buildCharts() {
     const onHover = t => { S.hoverT = t; S.dirty = true; };
     S.ch = {
-      primary: new F.charts.StripChart($('cPrimary'), { onHover, includeZero: true, minSpan: 80, nowLabel: true, markerLabels: true, label: 'Ethylene rise above baseline, ppb' }),
-      rate: new F.charts.StripChart($('cRate'), { onHover, includeZero: true, minSpan: 60, label: 'Ripening rate, ppb per hour' }),
-      temp: new F.charts.StripChart($('cTemp'), { onHover, minSpan: 0.8, label: 'Sensor temperature, degrees C' }),
-      rh: new F.charts.StripChart($('cRh'), { onHover, minSpan: 8, label: 'Humidity, percent' }),
-      fan: new F.charts.StripChart($('cFan'), { onHover, kind: 'state', xAxis: true, label: 'Fan runs and vent advice' }),
+      primary: new F.charts.StripChart($('cPrimary'), {
+        onHover, includeZero: true, minSpan: 80, nowLabel: true, markerLabels: true, xAxis: true,
+        label: 'Ethylene rise above baseline, temperature-corrected, ppb',
+      }),
     };
   }
 
   /* ================= render ================= */
-  const unit = (v, u) => v + '<small>' + u + '</small>';
-
   /** Inline fruit icon plus pod ID, used wherever a fruit would have been named. */
   const who = pc => F.fruitIcon(pc) + ' ' + pc.id;
 
@@ -388,61 +340,6 @@
     S.dirty = true;
   }
 
-  function renderPods(views, rank) {
-    const xrFull = S.mode === 'replay' ? [0, S.duration] : [0, Math.max(now(), 600)];
-    views.forEach((v, k) => {
-      const { b, f } = S.podEls[k];
-      b.dataset.offline = v.offline ? '1' : '0';
-      if (v.offline || !v.st) {
-        f.status.textContent = v.offline ? 'No link' : 'No data';
-        f.status.dataset.sev = 'offline';
-        f.label.textContent = v.offline ? 'Live mode' : (v.P ? v.P.label : '');
-        f.delta.innerHTML = unit('N/A', 'ppb rise');
-        f.rate.textContent = 'N/A';
-        f.temp.textContent = 'N/A'; f.rh.textContent = 'N/A'; f.fan.textContent = 'N/A'; f.pwr.textContent = 'N/A'; f.eat.textContent = '-';
-        F.charts.spark(f.spark, null, null, -1, xrFull);
-        return;
-      }
-      const st = v.st, pc = v.pc;
-      f.status.textContent = st.status;
-      f.status.dataset.sev = st.sev;
-      f.label.textContent = v.P.label;
-      f.delta.innerHTML = unit(st.loaded ? fmt.signed(st.delta) : fmt.signed(st.delta), 'ppb rise');
-      f.rate.innerHTML = Number.isFinite(st.rate30) && st.loaded ? unit(fmt.signed(st.rate30), 'ppb/h') : 'N/A';
-      f.temp.innerHTML = unit(fmt.num(st.temp, 1), '°C');
-      f.rh.innerHTML = Number.isFinite(st.rh) ? unit(fmt.num(st.rh, 0), '%') : 'N/A';
-      f.fan.textContent = !pc.fan ? 'None' : st.fan ? 'On' : 'Off';
-      f.pwr.innerHTML = pc.power === 'usb' ? 'USB' : unit(fmt.num(st.pwrDays, 1), 'd est');
-      f.eat.textContent = rank[k] ? String(rank[k]) : '-';
-      F.charts.spark(f.spark, v.P.series.t, v.P.series.delta, v.i, xrFull, R.deltaCautionPpb);
-    });
-  }
-
-  function renderCW(views) {
-    let nC = 0, nW = 0, nA = 0;
-    views.forEach((v, k) => {
-      const { row, tiles } = S.cwEls[k];
-      row.setAttribute('aria-selected', String(k === S.sel));
-      COLS.forEach(c => {
-        let s = 'na', isNew = false;
-        if (!v.offline && v.st) {
-          s = v.st.flags[c];
-          if (c === 'CAM' && k !== 0) s = 'na';
-          if (c === 'PWR' && v.pc.power === 'usb') s = 'off';
-          const on = v.st.onset && v.st.onset[c];
-          isNew = (s === 'caution' || s === 'warning') && on != null && on > S.ackT;
-        }
-        const el = tiles[c];
-        if (el.dataset.s !== s) el.dataset.s = s;
-        el.dataset.new = isNew ? '1' : '0';
-        el.setAttribute('aria-label', F.rules.COL_NAMES[c] + ': ' + ({ off: 'off', na: 'not fitted', caution: 'caution', warning: 'warning', advisory: 'advisory' })[s]);
-        if (s === 'caution') nC++; else if (s === 'warning') nW++; else if (s === 'advisory') nA++;
-      });
-    });
-    $('cwSummary').textContent = nW + ' warn, ' + nC + ' caut, ' + nA + ' advs';
-    return { nC, nW };
-  }
-
   function renderMaster(events) {
     let lit = '';
     for (let n = events.length - 1; n >= 0; n--) {
@@ -456,7 +353,7 @@
     if ((m.dataset.lit || '') !== lit) {
       m.dataset.lit = lit;
       m.dataset.flash = lit ? '1' : '0';
-      m.querySelector('span:last-child').textContent = lit === 'warning' ? 'Warning' : 'Caution';
+      m.textContent = lit === 'warning' ? 'Master warning' : 'Master caution';
       m.setAttribute('aria-label', lit ? 'Master ' + lit + ', press to acknowledge' : 'Master caution, no new alerts');
     }
   }
@@ -470,8 +367,10 @@
     return S.live.pod.events.concat(S.live.sysEvents).sort((a, b) => a.t - b.t);
   }
 
-  function renderEvents(list) {
-    const sig = S.mode + ':' + list.length + ':' + S.runStartMs;
+  function renderEvents(all) {
+    const id = cfg.pods[S.sel].id;
+    const list = all.filter(e => e.pod === id);
+    const sig = S.mode + ':' + id + ':' + list.length + ':' + S.runStartMs;
     if (sig === S.evSig) return;
     S.evSig = sig;
     const ol = $('evList');
@@ -479,44 +378,37 @@
     if (!list.length) {
       const li = document.createElement('li');
       li.className = 'ev-empty';
-      li.textContent = S.mode === 'live'
-        ? 'No events yet. Connect the DGS2, wait a minute for the baseline, then press Mark load when the produce goes in.'
-        : 'No events before this point in the run.';
+      li.textContent = S.mode === 'live' && S.sel === 0
+        ? 'No events yet. Connect the DGS2, wait a minute, then press the flag when the produce goes in.'
+        : 'No events yet.';
       ol.appendChild(li);
+      return;
     }
     const frag = document.createDocumentFragment();
-    for (let n = list.length - 1, c = 0; n >= 0 && c < 150; n--, c++) {
+    for (let n = list.length - 1, c = 0; n >= 0 && c < 60; n--, c++) {
       const e = list[n];
       const li = document.createElement('li');
       li.className = 'ev';
-      const tm = document.createElement('span'); tm.className = 'tm'; tm.textContent = fmt.met(e.t);
-      const pd = document.createElement('span'); pd.className = 'pd'; pd.textContent = e.pod;
-      const sv = document.createElement('span'); sv.className = 'sev sev-' + e.sev; sv.textContent = e.sev;
-      const tx = document.createElement('span'); tx.className = 'tx';
-      tx.append(pd, document.createTextNode(e.text));
-      li.append(tm, sv, tx);
+      li.dataset.sev = e.sev;
+      const tm = document.createElement('span'); tm.className = 'tm'; tm.textContent = fmt.metShort(e.t);
+      const tx = document.createElement('span'); tx.className = 'tx'; tx.textContent = e.text;
+      li.append(tm, tx);
       frag.appendChild(li);
     }
     ol.appendChild(frag);
-    $('evCount').textContent = list.length + (list.length === 1 ? ' entry' : ' entries');
   }
 
-  function renderReadouts(v, hi) {
-    const set = (k, h) => { const el = $('ro_' + k); if (el.innerHTML !== h) el.innerHTML = h; };
-    if (v.offline || !v.P || hi < 0) {
-      READOUTS.forEach(([k]) => set(k, 'N/A'));
+  /** The three numbers that matter, at the crosshair or now. */
+  function renderNums(v, k) {
+    if (v.offline || !v.P || k < 0) {
+      setText($('numRise'), 'N/A'); setText($('numRate'), 'N/A'); setText($('numFan'), v.offline ? 'NO LINK' : 'N/A'); setText($('numAt'), '');
       return;
     }
-    const s = v.P.series, st = v.P.states[hi];
-    const b = s.base;
-    set('base', unit(fmt.num(b.raw, 1), 'ppb') + ' <small>at ' + fmt.num(b.temp, 2) + ' °C' + (b.provisional ? ', provisional' : '') + '</small>');
-    set('delta', unit(fmt.signed(st.delta), 'ppb'));
-    set('tcorr', unit(fmt.signed(st.tcorr), 'ppb'));
-    set('rate30', st.loaded && Number.isFinite(st.rate30) ? unit(fmt.signed(st.rate30), 'ppb/h') : 'N/A');
-    set('accel', (Number.isFinite(st.rate15) ? fmt.signed(st.rate15) : 'N/A') + ' / ' + (Number.isFinite(st.ratePrev) ? fmt.signed(st.ratePrev) : 'N/A') + '<small>ppb/h</small>');
-    set('vent', st.fan ? 'Fan running' : st.vent.advised ? (v.pc.fan ? 'Vent next' : 'Advised, no fan') : (st.loaded ? 'Hold' : 'Waiting for load'));
-    set('tag', fmt.met(st.t));
-    set('data', unit(String(hi + 1), 'of ' + s.length) + ' <small>' + fmt.dur(s.nominalDt) + '</small>');
+    const st = v.P.states[k];
+    setText($('numRise'), fmt.signed(st.delta));
+    setText($('numRate'), st.loaded && Number.isFinite(st.rate30) ? fmt.signed(st.rate30) : 'N/A');
+    setText($('numFan'), st.fan ? 'ON' : !v.pc.fan ? 'NONE' : 'OFF');
+    setText($('numAt'), S.hoverT != null ? fmt.met(st.t) : '');
   }
 
   function clipIntervals(P, iEnd, t) {
@@ -526,95 +418,46 @@
   }
 
   function drawCharts(v) {
-    const ch = S.ch;
+    const c = S.ch.primary;
     if (v.offline || !v.P || v.P.series.length === 0) {
-      const msg = v.offline ? 'No link to this pod in live mode' : 'Waiting for the first reading';
-      const x = xRange(v.now);
-      const empty = { x, now: v.now, t: [], iEnd: -1, series: [], empty: msg };
-      Object.values(ch).forEach(c => { c.set(empty); c.draw(); });
-      ['roPrimary', 'roRate', 'roTemp', 'roRh', 'roFan'].forEach(id => { $(id).innerHTML = ''; });
-      return;
+      c.set({ x: xRange(v.now), now: v.now, t: [], iEnd: -1, series: [], empty: v.offline ? 'NO LINK IN LIVE MODE' : 'WAITING FOR DATA' });
+      c.draw();
+      return -1;
     }
     const P = v.P, s = P.series, t = v.now;
-    const x = xRange(t);
     const iEnd = s.indexAt(t);
     const hi = S.hoverT != null ? s.indexAt(Math.min(S.hoverT, t)) : null;
     const iv = clipIntervals(P, iEnd, t);
-    const markers = s.loadT != null ? [{ t: s.loadT, label: 'LOAD' }] : [];
-    const common = { x, now: t, t: s.t, iEnd, hoverT: S.hoverT, hoverI: hi, markers };
-
-    ch.primary.set(Object.assign({}, common, {
-      series: [
-        { y: s.rawDelta, color: 'data2', width: 1.25, dash: [4, 3] },
-        { y: s.delta, color: 'data', width: 2, fill: true },
-      ],
+    c.set({
+      x: xRange(t), now: t, t: s.t, iEnd, hoverT: S.hoverT, hoverI: hi,
+      markers: s.loadT != null ? [{ t: s.loadT, label: 'LOAD' }] : [],
+      series: [{ y: s.delta, color: 'data', width: 2 }],
       shade: iv.on,
       thresholds: [
-        { v: R.ventDeltaPpb, label: 'VENT ' + R.ventDeltaPpb, color: 'ink', include: true },
+        { v: R.ventDeltaPpb, label: 'VENT ' + R.ventDeltaPpb, color: 'advisory', include: true },
         { v: R.deltaCautionPpb, label: 'CAUTION ' + R.deltaCautionPpb, color: 'caution', include: true },
       ],
-    }));
-    ch.rate.set(Object.assign({}, common, {
-      series: [{ y: P.rateArr, color: 'data', width: 2 }],
-      shade: iv.on,
-      thresholds: [{ v: R.rateCautionPpbH, label: 'CAUTION ' + R.rateCautionPpbH, color: 'caution', include: true }],
-    }));
-    ch.temp.set(Object.assign({}, common, {
-      series: [{ y: s.temp, color: 'data', width: 2 }],
-      thresholds: [{ v: s.base.temp, label: 'T REF ' + s.base.temp.toFixed(2), color: 'ink', include: true }],
-    }));
-    ch.rh.set(Object.assign({}, common, {
-      series: [{ y: s.rh, color: 'data', width: 2 }],
-      thresholds: [{ v: R.rhCautionPct, label: 'CAUTION ' + R.rhCautionPct, color: 'caution', include: true }],
-    }));
-    ch.fan.set(Object.assign({}, common, { intervals: iv }));
-    Object.values(ch).forEach(c => c.draw());
-
-    const k = hi != null && hi >= 0 ? hi : iEnd;
-    if (k < 0) return;
-    const st = P.states[k];
-    const at = '<small> at </small>' + fmt.met(s.t[k]);
-    $('roPrimary').innerHTML = unit(fmt.signed(s.delta[k]), ' corr') + '&nbsp; ' + unit(fmt.signed(s.rawDelta[k]), ' as read') + at;
-    $('roRate').innerHTML = st.loaded && Number.isFinite(P.rateArr[k]) ? unit(fmt.signed(P.rateArr[k]), ' ppb/h') : 'N/A';
-    $('roTemp').innerHTML = unit(fmt.num(s.temp[k], 2), ' °C');
-    $('roRh').innerHTML = Number.isFinite(s.rh[k]) ? unit(fmt.num(s.rh[k], 1), ' %RH') : 'N/A';
-    $('roFan').textContent = s.fan[k] ? 'Fan on' : st.vent.advised ? 'Vent advised' : (v.pc.fan ? 'Fan off' : 'No fan fitted');
+    });
+    c.draw();
+    return hi != null && hi >= 0 ? hi : iEnd;
   }
 
   function renderCam() {
     const c = S.camState;
+    $('camPanel').hidden = !(S.mode === 'live' && S.sel === 0);
     const img = $('camImg');
     const hasPhoto = !!c.photo;
     img.hidden = !hasPhoto;
-    $('camEmpty').hidden = hasPhoto;
+    $('camMsg').hidden = hasPhoto;
     if (hasPhoto && img.src !== c.photo) img.src = c.photo;
-    if (!hasPhoto) {
-      $('camMsg').textContent = c.msg || (S.mode === 'replay'
-        ? 'No downlink. Experiment 3 ran without a camera. Connect the XIAO to see frames here.'
-        : 'No downlink. Enter the IP from Serial Monitor and press Connect.');
+    if (!hasPhoto) $('camMsg').textContent = c.link === 'connecting' ? 'Connecting' : 'No camera';
+    let meta = c.msg || '';
+    if (c.link === 'ok') {
+      const top = c.preds && c.preds[0];
+      meta = (top ? top.name + ' ' + Math.round(top.p * 100) + '%, ' : '') + fmt.local(c.lastMs) + (c.msg ? '. ' + c.msg : '');
     }
-    let meta = 'No downlink';
-    if (c.link === 'connecting') meta = 'Connecting';
-    if (c.link === 'ok') meta = 'Frame ' + fmt.local(c.lastMs) + ', ' + c.w + 'x' + c.h + ', ' + c.ms + ' ms';
-    if (c.link === 'lost') meta = 'Link lost';
     $('camMeta').textContent = meta;
-    if (hasPhoto && c.msg) $('camMeta').textContent = meta + '. ' + c.msg;
-
-    const box = $('camPreds');
-    box.textContent = '';
-    if (c.preds && c.link === 'ok') {
-      c.preds.slice(0, 3).forEach(p => {
-        const row = document.createElement('div'); row.className = 'pred';
-        const n = document.createElement('span'); n.textContent = p.name;
-        const v = document.createElement('span'); v.textContent = (p.p * 100).toFixed(0) + '%';
-        const bar = document.createElement('div'); bar.className = 'bar';
-        const fill = document.createElement('span'); fill.style.width = (p.p * 100).toFixed(1) + '%';
-        bar.appendChild(fill);
-        row.append(n, v, bar);
-        box.appendChild(row);
-      });
-    }
-    $('btnCam').textContent = cam.running ? 'Disconnect' : 'Connect';
+    $('btnCam').textContent = cam.running ? 'Stop' : 'Connect';
   }
 
   function camEvents(c) {
@@ -633,23 +476,16 @@
   }
 
   function renderClocks(t) {
-    const ms = S.runStartMs + t * 1000;
-    $('clkMet').textContent = fmt.met(t);
-    $('clkGmt').textContent = fmt.gmt(ms);
-    $('clkLocal').textContent = fmt.local(ms);
+    setText($('clkMet'), fmt.met(t));
   }
 
   function renderHeader() {
-    const pc = cfg.pods[S.sel];
-    $('selTitle').innerHTML = F.fruitIcon(pc) + ' ' + pc.id;
-    const label = S.mode === 'live' ? (S.sel === 0 ? 'Live DGS2' : 'Not connected') : S.pods[S.sel].label;
-    $('selSource').textContent = label + ', ' + pc.note + (pc.fan ? ', fan fitted' : ', no fan');
     if (S.mode === 'replay') {
       $('sbSource').textContent = S.csv
-        ? 'Banana: ' + S.csv.name + ' (' + S.csv.rows + ' rows). Others simulated'
-        : 'Banana: Experiment 3, rebuilt from the write-up. Others simulated';
+        ? 'POD-1 ' + S.csv.name + ', others simulated'
+        : 'POD-1 Experiment 3 (rebuilt), others simulated';
     } else {
-      $('sbSource').textContent = 'Banana: live DGS2. Other pods not connected';
+      $('sbSource').textContent = 'POD-1 live DGS2, others not connected';
     }
   }
 
@@ -671,15 +507,8 @@
     if (S.view === 'crew') {
       renderCrew(views, ranked, rank);
     } else {
-      setHtml($('eatOrder'), ranked.length
-        ? 'Eat first: ' + ranked.map(o => F.fruitIcon(cfg.pods[o.k])).join(' ')
-        : 'Eat first: waiting for data');
-      renderPods(views, rank);
-      renderCW(views);
       renderEvents(events);
-      const hi = v.P ? (S.hoverT != null ? v.P.series.indexAt(Math.min(S.hoverT, v.now)) : v.i) : -1;
-      renderReadouts(v, hi == null ? -1 : hi);
-      drawCharts(v);
+      renderNums(v, drawCharts(v));
     }
     renderMaster(events);
     renderClocks(now());
@@ -689,8 +518,9 @@
   /* ================= interaction ================= */
   function select(k) {
     S.sel = k;
-    S.podEls.forEach((e, n) => e.b.setAttribute('aria-pressed', String(n === k)));
-    renderHeader();
+    S.pickEls.forEach((b, n) => b.setAttribute('aria-selected', String(n === k)));
+    S.evSig = null;
+    renderCam();
     S.dirty = true;
   }
 
@@ -762,15 +592,6 @@
     }
   }
 
-  function applyTheme(theme) {
-    document.documentElement.dataset.theme = theme;
-    const b = $('btnTheme');
-    b.innerHTML = theme === 'night' ? '<i class="ph ph-sun" aria-hidden="true"></i>' : '<i class="ph ph-moon" aria-hidden="true"></i>';
-    b.setAttribute('aria-label', theme === 'night' ? 'Switch to day display' : 'Switch to night display');
-    F.charts.refreshColors();
-    S.dirty = true;
-  }
-
   const cam = new F.live.Camera(cfg, st => {
     S.camState = Object.assign({}, st);
     camEvents(st);
@@ -785,10 +606,6 @@
       const b = e.target.closest('button'); if (!b) return;
       S.speed = Number(b.dataset.speed); setPressed('speedSeg', 'speed', S.speed);
     });
-    $('rangeSeg').addEventListener('click', e => {
-      const b = e.target.closest('button'); if (!b) return;
-      S.range = b.dataset.range; setPressed('rangeSeg', 'range', S.range); S.dirty = true;
-    });
     $('btnPlay').addEventListener('click', () => {
       if (!S.playing && S.simT >= S.duration) S.simT = 0;
       S.playing = !S.playing; syncPlay();
@@ -800,10 +617,6 @@
     $('csvInput').addEventListener('change', e => { const f = e.target.files[0]; if (f) loadCsvFile(f); e.target.value = ''; });
     $('btnMark').addEventListener('click', markLoad);
     $('btnMaster').addEventListener('click', () => { S.ackT = now(); S.ackWall = Date.now(); S.dirty = true; });
-    $('btnTheme').addEventListener('click', () => {
-      const next = document.documentElement.dataset.theme === 'night' ? 'day' : 'night';
-      store.set('theme', next); applyTheme(next);
-    });
     $('btnSerial').addEventListener('click', async () => {
       const d = S.live.dgs;
       try {
@@ -816,16 +629,13 @@
     });
 
     $('camIp').value = store.get('camIp') || cfg.camera.ip;
-    $('camModel').value = store.get('camModel') || cfg.camera.modelUrl;
-    $('camEvery').value = String(cfg.camera.intervalS);
     $('camForm').addEventListener('submit', e => {
       e.preventDefault();
       if (cam.running) { cam.stop(); renderCam(); return; }
       const ip = $('camIp').value.trim();
-      if (!ip) { $('camMsg').textContent = 'Enter the camera IP from Serial Monitor first.'; return; }
+      if (!ip) { $('camMeta').textContent = 'Enter the camera IP from Serial Monitor.'; return; }
       store.set('camIp', ip);
-      store.set('camModel', $('camModel').value.trim());
-      cam.start({ ip, intervalS: Number($('camEvery').value), classify: $('camClassify').checked, modelUrl: $('camModel').value.trim() });
+      cam.start({ ip, intervalS: cfg.camera.intervalS, classify: !!cfg.camera.modelUrl, modelUrl: cfg.camera.modelUrl });
       renderCam();
     });
 
@@ -871,12 +681,10 @@
 
   /* ================= start ================= */
   S.ackWall = Date.now();
-  applyTheme(store.get('theme') === 'day' ? 'day' : 'night');
+  F.charts.refreshColors();
   initReplay(null);
   buildTiles();
-  buildPods();
-  buildCW();
-  buildReadouts();
+  buildPodPick();
   buildCharts();
   bind();
   setPressed('speedSeg', 'speed', S.speed);

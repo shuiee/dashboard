@@ -103,7 +103,7 @@
       while (iStart < iEnd && t[iStart] < d.x[0]) iStart++;
       iStart = Math.max(0, iStart - 1);
 
-      ctx.font = '500 10.5px ' + C.mono;
+      ctx.font = '400 10.5px ' + C.mono;
       ctx.textBaseline = 'middle';
 
       if (o.kind === 'state') {
@@ -127,7 +127,7 @@
         if (hi - lo < o.minSpan) { const m = (hi + lo) / 2; lo = m - o.minSpan / 2; hi = m + o.minSpan / 2; }
         const padV = (hi - lo) * 0.1;
         lo -= padV; hi += padV;
-        const step = niceStep(hi - lo, Math.max(2, Math.floor((y1 - y0) / 34)));
+        const step = niceStep(hi - lo, Math.max(2, Math.floor((y1 - y0) / 70)));
         this.lo = Math.floor(lo / step) * step;
         this.hi = Math.ceil(hi / step) * step;
 
@@ -160,8 +160,8 @@
           if (th.v < this.lo || th.v > this.hi) continue;
           const y = Math.round(this.yToP(th.v)) + 0.5;
           ctx.save();
-          ctx.strokeStyle = th.color === 'caution' ? C.caution : th.color === 'warning' ? C.warning : C.ink3;
-          ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
+          ctx.strokeStyle = th.color === 'caution' ? C.caution : th.color === 'warning' ? C.warning : th.color === 'advisory' ? C.advisory : C.ink3;
+          ctx.setLineDash([5, 4]); ctx.lineWidth = 1.5;
           ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
           ctx.restore();
           ctx.fillStyle = C.ink2; ctx.textAlign = 'right';

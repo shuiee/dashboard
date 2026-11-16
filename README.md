@@ -6,32 +6,34 @@ Operator console for **Fresh Food Off Earth**: modular sealed pods, one fruit ea
 
 ## Two screens
 
-### Crew view (default)
+Switch between them with the green softkeys at the bottom, like the menu row on a Shuttle display.
+
+### Crew
 
 Built to be read in a few seconds, on the "dark cockpit" principle: nothing appears unless it matters.
 
 Each pod gets one tile, always in the same position, with just three things:
 
-1. **Eat order**: the big number in the corner (1 = eat first).
-2. **The fruit**: an icon in a spacecraft porthole. The rim turns amber when it should be eaten today.
-3. **One word**: *Wait*, *Soon*, *Ready* or *Eat now* (amber).
+1. **Eat order**: the boxed number in the corner (1 = eat first).
+2. **The fruit**: an icon inside a ring with tick marks, after the Shuttle's attitude indicator.
+3. **One word**: *Wait*, *Soon*, *Ready* or *Eat now* (inverse video).
 
 Everything else stays hidden until it needs someone:
 
 - **Venting** appears under a pod only while its fan runs; **Open vent** (outlined) appears only when a pod without a fan needs venting by hand.
 - **A notice line** appears above the tiles only when the crew must act (sensor stopped, condensation, battery, spoilage seen by the camera).
 
-Click a tile to open that pod in the ethylene monitor.
+Click a tile to open that pod on the Ethylene screen.
 
-**Always one screen.** The crew view never scrolls, from a phone to a projector. Each tile is a CSS size container, so the number, porthole and word scale with the space they get. Landscape screens show the pods in one row; portrait screens show a 2 x 2 block.
+### Ethylene
 
-**Fruit icons, not names.** Fruits are shown as icons so they can be recognised at a glance; the name stays in a hover tooltip and for screen readers. The rim of the porthole turns amber when that fruit should be eaten today.
+One pod at a time: three boxed readouts (rise, ripening rate, fan), one chart of the temperature-corrected rise with the vent and caution limits and fan runs shaded, and that pod's events. Hover the chart to read any moment. In live mode the camera appears here for POD-1.
 
-### Ethylene monitor
+**Always one screen.** Nothing scrolls, from a phone to a projector (the event list scrolls inside its own column). Crew tiles are CSS size containers, so the number, ring and word scale with the space they get. Landscape screens show the pods in one row; portrait screens show a 2 x 2 block.
 
-The engineering detail for the team and the jury: strip charts for ethylene rise (temperature-corrected and as read), ripening rate, temperature, humidity and fan runs; a caution and warning lamp matrix; the camera; and the event log.
+**Fruit icons, not names.** The name stays in a hover tooltip and for screen readers.
 
-Replay and live controls sit in the footer, out of the crew's way. Keyboard: `Space` play/pause, `1` to `4` select a pod, arrow keys jump 5 minutes.
+Replay and live controls sit in the same softkey row. Keyboard: `Space` play/pause, `1` to `4` select a pod, arrow keys jump 5 minutes. The flag key marks the moment produce went in.
 
 ## Where the data comes from (please read before presenting)
 
@@ -51,45 +53,47 @@ Every decision has a reason the console can print.
 5. **Eat order** = most ripe stage first, then fastest ripening.
 6. **Vent** when the rise passes 300 ppb, or when the last 15 minutes rise at least 1.5x faster than the hour before (ripening speeding up). The fan runs 120 s, then waits 10 minutes. Pods without a fan show *Vent needed* instead. **No venting at *Eat now***: flushing only slows fruit that has not ripened yet (NIAB), so at that point the answer is to eat it.
 
-## NASA display conventions applied
+## Display language
 
-- **Caution and warning classes.** Red = warning (sensor fault, spoilage seen by the camera, temperature far out of range). Amber = caution (needs attention: ripening fast, ethylene high, humidity high, no data). White outline = advisory (fan running or vent advised). Unlit = nominal. Red is never used for decoration.
-- **Master caution** lights for any new caution or warning and flashes until acknowledged. New lamps flash too. Reduced-motion settings replace flashing with an outline.
-- **Colour is never the only cue.** Every lamp carries its label and every status chip carries a word.
-- **Units on every value**, numbers in a monospaced face, time tags in MET and GMT day-of-year.
-- **Dark field by default** to cut glare; a day display for bright crit rooms.
-- **One y-axis per chart**, all charts on one time axis with a shared crosshair.
-- **Staleness is a caution.** In live mode, if no reading arrives for 5 samples, `DATA` lights.
+Taken from the Space Shuttle glass cockpit (MEDS) and NASA caution and warning practice:
+
+- **Deep violet screen, yellow line graphics, boxed digital readouts, green softkeys** along the bottom edge.
+- **Inverse video means "look at this"**: *Eat now* and cautions are yellow blocks. Red is kept for warnings (sensor fault, spoilage seen by the camera, temperature far out of range) and never used for decoration.
+- **Master caution** lights for any new caution or warning and flashes until acknowledged. Reduced-motion settings replace flashing with an outline.
+- **Colour is never the only cue**: every state also carries a word.
+- **B612 Mono**, the typeface Airbus designed for cockpit displays, for every label and number.
+- **Mission elapsed time** is the only clock.
+- **Staleness is a caution**: in live mode, a sensor that stops reporting raises a notice.
 
 ## Live hardware
 
-Switch the top bar to **Live**.
+Press the **Live** softkey.
 
-**Ethylene sensor (DGS2 over USB).** Press *Connect DGS2* and pick the serial port (Chrome or Edge on a laptop). The console sends only a carriage return once a second, the documented single-read command, and never sends zero, calibration or settings commands. After a minute it takes a provisional baseline; press **Mark load** the moment the produce goes in.
+**Ethylene sensor (DGS2 over USB).** Press *Connect DGS2* and pick the serial port (Chrome or Edge on a laptop). The console sends only a carriage return once a second, the documented single-read command, and never sends zero, calibration or settings commands. After a minute it takes a provisional baseline; press the **flag** key the moment the produce goes in.
 
-**Camera (XIAO ESP32S3).** Enter the IP from Serial Monitor and press *Connect*. The console fetches `http://<ip>/capture` on the chosen interval and, with *Classify* ticked, runs the Teachable Machine model on each frame. Close the camera stream tab first, and keep the laptop on the same hotspot.
+**Camera (XIAO ESP32S3).** Enter the IP from Serial Monitor and press *Connect*. The camera panel appears on the Ethylene screen with POD-1 selected. The console fetches `http://<ip>/capture` every `camera.intervalS` seconds and runs the Teachable Machine model in `camera.modelUrl` on each frame. Close the camera stream tab first, and keep the laptop on the same hotspot.
 
 > Browsers block `http://` cameras on `https://` pages, so the live camera works when you open `index.html` from your laptop, not from the GitHub Pages site. Replay works everywhere.
 
-**Logged CSV.** Drop a CSV from the logging script onto the page, or use the *CSV* button. Recognised headers: a time column (`time`, `timestamp`, `iso`, `epoch`, `elapsed`), `ppb` or `ethylene`, `temp`, and optionally `rh` or `humidity`, and `fan`. Scrub to the moment the produce went in and press **Mark load**.
+**Logged CSV.** Drop a CSV from the logging script onto the page, or use the CSV key. Recognised headers: a time column (`time`, `timestamp`, `iso`, `epoch`, `elapsed`), `ppb` or `ethylene`, `temp`, and optionally `rh` or `humidity`, and `fan`. Scrub to the moment the produce went in and press the flag key.
 
 ## Files
 
 ```
 index.html        layout
-css/console.css   display tokens (night and day), layout, lamp styles
+css/console.css   display tokens, layout
 js/config.js      every threshold, the pods, sensor and camera settings
 js/icons.js       fruit icons (IconPark, Apache 2.0)
 js/model.js       Series (temperature correction, rates) and the rule set
 js/data.js        Experiment 3 reconstruction, simulated pods, CSV import
-js/charts.js      canvas strip charts and sparklines
+js/charts.js      canvas chart
 js/live.js        DGS2 Web Serial reader and XIAO camera client
 js/app.js         wiring, replay clock, rendering
 ```
 
 ## Credits
 
-Fruit icons: [IconPark](https://github.com/bytedance/IconPark) Outline by ByteDance, Apache License 2.0 (banana, apple-one, tomato, avocado), inlined unmodified in `js/icons.js`. Interface icons: [Phosphor](https://phosphoricons.com), MIT.
+Typeface: [B612 Mono](https://github.com/polarsys/b612), Open Font License. Fruit icons: [IconPark](https://github.com/bytedance/IconPark) Outline by ByteDance, Apache License 2.0 (banana, apple-one, tomato, avocado), inlined unmodified in `js/icons.js`. Interface icons: [Phosphor](https://phosphoricons.com), MIT.
 
 ## Open items
 
