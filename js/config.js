@@ -66,6 +66,20 @@ FFOE.config = {
     spoilageConfidence: 0.8,
   },
 
+  // Eat readiness. The crew view leads with this.
+  // A pod steps up a stage when its ripening rate OR its ethylene rise passes a step.
+  // Ripening only goes one way, so a pod never steps back down during a load.
+  eat: {
+    stages: [
+      { key: 'wait', word: 'Wait', label: 'Not ripe yet' },
+      { key: 'soon', word: 'Soon', label: 'Ripening' },
+      { key: 'ready', word: 'Ready', label: 'Ready to eat' },
+      { key: 'now', word: 'Eat now', label: 'Eat today' },
+    ],
+    rateSteps: [60, 150, 250],   // PLACEHOLDER ppb/h to reach Soon / Ready / Eat now
+    riseSteps: [150, 400, 700],  // PLACEHOLDER ppb rise to reach Soon / Ready / Eat now
+  },
+
   power: {
     estimatedDays: 6,          // pinup estimate: about 13 mA with fan, 2500 mAh. Not measured.
     currentMa: 13,

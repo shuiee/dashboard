@@ -2,22 +2,28 @@
 
 Operator console for **Fresh Food Off Earth**: modular sealed pods, one fruit each, that sense the ethylene the fruit gives off, watch it with a camera, and run a small fan to flush the gas before ripening spreads.
 
-The console is built to read like a NASA mission-control display rather than a website: one screen, dense, dark, with a caution and warning panel, strip charts on a shared time axis, time-tagged values and an event log.
-
 **Open it:** double-click `index.html`, or visit the GitHub Pages site at <https://shuiee.github.io/dashboard/>. No build step and no install.
 
-## What is on screen
+## Two screens
 
-| Area | What it shows |
+### Crew view (default)
+
+Built to be read in a few seconds. It answers two questions and stays quiet otherwise ("dark cockpit": nothing lights up unless it needs you).
+
+| Area | What it answers |
 |---|---|
-| Top bar | Data source (Replay or Live), replay transport, mission elapsed time (MET), GMT as day-of-year, local time, master caution, day/night display |
-| Pods (left) | Each pod's status word, ethylene rise, ripening rate, trend, temperature, humidity, fan, power and eat-first rank |
-| Telemetry (centre) | The selected pod: readouts, then strip charts for ethylene rise (temperature-corrected and as read), ripening rate, temperature, humidity, and fan runs |
-| Caution and warning (right) | A lamp matrix, one row per pod: `C2H4` `RATE` `VENT` `TEMP` `RH` `DATA` `CAM` `PWR` |
-| Camera | Latest XIAO frame for POD-1, with the Teachable Machine classifier result |
-| Event log | Every caution, fan run and state change, newest first, tagged with MET |
+| **Eat next** | Which fruit to eat now, and what comes after it |
+| **Ventilation** | Whether any fan is running, or a pod with no fan needs venting by hand |
+| **Crew actions** | Anything else that needs a person (sensor stopped, condensation, battery, spoilage seen by the camera). Says *No action needed* most of the time, on purpose |
+| **Pod tiles** | One per pod, in fixed positions: the fruit, its eat order, a big readiness word (Wait, Soon, Ready, Eat now) with a four-step bar, the fan state, and one small ethylene line |
 
-Keyboard: `Space` play/pause, `1` to `4` select a pod, arrow keys jump 5 minutes.
+Click a tile to open that pod in the ethylene monitor.
+
+### Ethylene monitor
+
+The engineering detail for the team and the jury: strip charts for ethylene rise (temperature-corrected and as read), ripening rate, temperature, humidity and fan runs; a caution and warning lamp matrix; the camera; and the event log.
+
+Replay and live controls sit in the footer, out of the crew's way. Keyboard: `Space` play/pause, `1` to `4` select a pod, arrow keys jump 5 minutes.
 
 ## Where the data comes from (please read before presenting)
 
@@ -33,8 +39,9 @@ Every decision has a reason the console can print.
 1. **Temperature correction first.** `corrected = reading - 120 ppb/&deg;C x (T - T at baseline)`. The slope is `sensor.tempSlopePpbPerC`.
 2. **Rise** = corrected reading minus the baseline (the mean of the readings just before the produce went in).
 3. **Ripening rate** = how fast the rise grows over 30 minutes, in ppb/h. Fan runs and the 3 minutes after them are left out, because venting dilutes the gas and would look like the fruit got less ripe.
-4. **Vent** when the rise passes 300 ppb, or when the last 15 minutes rise at least 1.5x faster than the hour before (ripening speeding up). The fan runs 120 s, then waits 10 minutes. Pods without a fan show *Vent advised* instead.
-5. **Eat first** ranks pods by ripening rate.
+4. **Readiness.** A pod steps from *Wait* to *Soon* to *Ready* to *Eat now* when its ripening rate (60 / 150 / 250 ppb/h) or its rise (150 / 400 / 700 ppb) passes a step, whichever is higher. Ripening only goes one way, so a pod never steps back during a load. These steps are placeholders until we calibrate them against daily peel scores.
+5. **Eat order** = most ripe stage first, then fastest ripening.
+6. **Vent** when the rise passes 300 ppb, or when the last 15 minutes rise at least 1.5x faster than the hour before (ripening speeding up). The fan runs 120 s, then waits 10 minutes. Pods without a fan show *Vent needed* instead. **No venting at *Eat now***: flushing only slows fruit that has not ripened yet (NIAB), so at that point the answer is to eat it.
 
 ## NASA display conventions applied
 

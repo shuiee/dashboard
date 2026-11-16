@@ -183,7 +183,18 @@
     const rate15 = series.rate(i, R.accelShortS);
     const j = series.indexAt(t - R.accelShortS);
     const ratePrev = j > 0 ? series.rate(j, R.accelLongS) : NaN;
-    const vent = ventDecision(series, i, pod, cfg);
+    // Eat readiness: the higher of the rate step and the rise step, latched so it never goes back.
+    let stage = null;
+    if (loaded) {
+      const E = cfg.eat;
+      const rs = Number.isFinite(rate30) && t - series.loadT >= R.rateMinS
+        ? E.rateSteps.filter(v => rate30 >= v).length : 0;
+      const ds = E.riseSteps.filter(v => delta >= v).length;
+      stage = Math.max(rs, ds);
+      if (prev && prev.loaded && prev.stage != null) stage = Math.max(stage, prev.stage);
+    }
+    // Venting only slows fruit that has not ripened yet (NIAB). At "Eat now" the answer is to eat it.
+    const vent = stage === 3 ? { advised: false, held: true } : ventDecision(series, i, pod, cfg);
     const pf = prev ? prev.flags : {};
     const hyst = (cur, val, thr) =>
       (val >= thr || (cur === 'caution' && val >= thr * R.hysteresis)) ? 'caution' : 'off';
@@ -210,7 +221,7 @@
 
     const st = {
       i, t, loaded, delta, rawDelta: series.rawDelta[i], raw, corr: series.corr[i],
-      tcorr: series.corr[i] - raw, temp, rh, fan, rate30, rate15, ratePrev, vent, flags, pwrDays,
+      tcorr: series.corr[i] - raw, temp, rh, fan, rate30, rate15, ratePrev, vent, flags, pwrDays, stage,
     };
     if (ctx) applyContext(st, ctx);
     else finishStatus(st);
@@ -270,6 +281,12 @@
         ' C (' + b.n + ' samples)');
     }
 
+    // Eat readiness steps
+    if (st.loaded && st.stage != null && (!prev || prev.stage == null || st.stage > prev.stage) && st.stage > 0) {
+      const sg = cfg.eat.stages[st.stage];
+      add(st.stage === 3 ? 'ADVS' : 'INFO', pod.fruit + ' now ' + sg.label.toLowerCase());
+    }
+
     // Fan and vent advice
     const pFan = prev ? prev.fan : 0;
     if (st.fan && !pFan) {
@@ -280,7 +297,7 @@
     if (!pod.fan) {
       const pAdv = prev ? prev.vent.advised : false;
       if (st.vent.advised && !pAdv) add('ADVS', 'Vent advised: ' + st.vent.reason + '. No fan fitted');
-      if (!st.vent.advised && pAdv) add('INFO', 'Vent no longer advised');
+      if (!st.vent.advised && pAdv) add('INFO', st.vent.held ? 'Vent no longer needed: ready to eat' : 'Vent no longer advised');
     }
 
     for (const col of COLS) {

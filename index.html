@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pod Telemetry Console</title>
-<meta name="description" content="Fresh Food Off Earth: live telemetry console for sealed produce pods that sense ethylene and vent before ripening spreads.">
+<meta name="description" content="Fresh Food Off Earth: what to eat first and which pods need venting, from sealed produce pods that sense ethylene.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
@@ -14,39 +14,21 @@
 <body>
 <div class="console" id="console">
 
-  <!-- ============ Top bar: identity, source, transport, clocks, master caution ============ -->
+  <!-- ============ Top bar ============ -->
   <header class="topbar">
     <div class="ident">
       <div class="ident-name">Fresh Food Off Earth</div>
-      <div class="ident-sub">Produce pod telemetry</div>
+      <div class="ident-sub">Produce pods</div>
     </div>
 
-    <div class="seg" role="group" aria-label="Data source" id="modeSeg">
-      <button type="button" data-mode="replay" aria-pressed="true">Replay</button>
-      <button type="button" data-mode="live" aria-pressed="false">Live</button>
-    </div>
-
-    <div class="transport" id="replayBar">
-      <button type="button" class="btn icon" id="btnPlay" aria-label="Pause replay"><i class="ph ph-pause" aria-hidden="true"></i></button>
-      <div class="seg seg-sm" role="group" aria-label="Replay speed" id="speedSeg">
-        <button type="button" data-speed="1" aria-pressed="false">1x</button>
-        <button type="button" data-speed="10" aria-pressed="true">10x</button>
-        <button type="button" data-speed="60" aria-pressed="false">60x</button>
-        <button type="button" data-speed="300" aria-pressed="false">300x</button>
-      </div>
-      <input type="range" id="scrub" min="0" max="14400" step="10" value="0" aria-label="Replay position">
-      <label class="btn" for="csvInput" title="Replace POD-1 with a CSV from the logging script"><i class="ph ph-file-csv" aria-hidden="true"></i><span>CSV</span></label>
-      <input type="file" id="csvInput" accept=".csv,.txt,text/csv" hidden>
-    </div>
-
-    <div class="transport" id="liveBar" hidden>
-      <button type="button" class="btn" id="btnSerial"><i class="ph ph-usb" aria-hidden="true"></i><span>Connect DGS2</span></button>
-      <span class="live-state" id="serialState">Sensor not connected</span>
-    </div>
+    <nav class="tabs" role="tablist" aria-label="Screens" id="viewTabs">
+      <button type="button" role="tab" data-view="crew" aria-selected="true" aria-controls="crewView">Crew view</button>
+      <button type="button" role="tab" data-view="monitor" aria-selected="false" aria-controls="monitorView">Ethylene monitor</button>
+    </nav>
 
     <div class="clocks">
       <div class="clock"><span class="k">MET</span><span class="v" id="clkMet">T+00:00:00</span></div>
-      <div class="clock"><span class="k">GMT</span><span class="v" id="clkGmt">000/00:00:00</span></div>
+      <div class="clock hide-sm"><span class="k">GMT</span><span class="v" id="clkGmt">000/00:00:00</span></div>
       <div class="clock hide-md"><span class="k">Local</span><span class="v" id="clkLocal">00:00:00</span></div>
     </div>
 
@@ -56,130 +38,174 @@
     <button type="button" class="btn icon" id="btnTheme" aria-label="Switch to day display"><i class="ph ph-sun" aria-hidden="true"></i></button>
   </header>
 
-  <!-- ============ Pod rack ============ -->
-  <section class="rack" aria-labelledby="rackTitle">
-    <div class="phead">
-      <h2 id="rackTitle">Pods</h2>
-      <span class="pmeta" id="eatOrder"></span>
-    </div>
-    <div class="pods" id="pods"></div>
-  </section>
-
-  <!-- ============ Selected pod telemetry ============ -->
-  <section class="plots" aria-labelledby="selTitle">
-    <div class="phead">
-      <h2 id="selTitle">POD-1</h2>
-      <span class="pmeta" id="selSource"></span>
-      <div class="phead-r">
-        <div class="seg seg-sm" role="group" aria-label="Time range" id="rangeSeg">
-          <button type="button" data-range="all" aria-pressed="true">Run</button>
-          <button type="button" data-range="3600" aria-pressed="false">1 h</button>
-          <button type="button" data-range="900" aria-pressed="false">15 min</button>
-        </div>
-        <button type="button" class="btn sm" id="btnMark" title="Set the baseline to the two minutes before now and mark produce loaded"><i class="ph ph-flag" aria-hidden="true"></i><span>Mark load</span></button>
+  <!-- ============ Crew view: what to eat, what to vent ============ -->
+  <main class="crew" id="crewView" role="tabpanel" aria-label="Crew view">
+    <section class="brief" aria-label="Summary">
+      <div class="brief-cell brief-next">
+        <div class="bk">Eat next</div>
+        <div class="bv" id="nextFruit">N/A</div>
+        <div class="bs" id="nextSub"></div>
       </div>
-    </div>
-
-    <dl class="readouts" id="readouts"></dl>
-
-    <div class="chart chart-primary">
-      <div class="chead">
-        <span class="ct">Ethylene rise above baseline</span><span class="cu">ppb</span>
-        <span class="legend">
-          <span class="lg"><i class="sw sw-data"></i>Temp-corrected</span>
-          <span class="lg"><i class="sw sw-raw"></i>As read</span>
-        </span>
-        <span class="cr" id="roPrimary"></span>
+      <div class="brief-cell brief-vent">
+        <div class="bk">Ventilation</div>
+        <div class="bv bv-sm" id="ventSum">N/A</div>
+        <div class="bs" id="ventSub"></div>
       </div>
-      <div class="cbody" id="cPrimary"></div>
-    </div>
-    <div class="chart">
-      <div class="chead"><span class="ct">Ripening rate</span><span class="cu">ppb/h, 30 min, fan runs excluded</span><span class="cr" id="roRate"></span></div>
-      <div class="cbody" id="cRate"></div>
-    </div>
-    <div class="chart">
-      <div class="chead"><span class="ct">Sensor temperature</span><span class="cu">&deg;C</span><span class="cr" id="roTemp"></span></div>
-      <div class="cbody" id="cTemp"></div>
-    </div>
-    <div class="chart">
-      <div class="chead"><span class="ct">Humidity</span><span class="cu">%RH</span><span class="cr" id="roRh"></span></div>
-      <div class="cbody" id="cRh"></div>
-    </div>
-    <div class="chart chart-state">
-      <div class="chead"><span class="ct">Fan and vent advice</span><span class="cu">filled: fan ran, outline: advised</span><span class="cr" id="roFan"></span></div>
-      <div class="cbody" id="cFan"></div>
-    </div>
-  </section>
+      <div class="brief-cell brief-act">
+        <div class="bk">Crew actions</div>
+        <ul class="actions" id="actions"></ul>
+      </div>
+    </section>
+    <section class="tiles" id="tiles" aria-label="Pods"></section>
+  </main>
 
-  <!-- ============ Right column ============ -->
-  <section class="side" aria-label="Alerts, camera and log">
-    <div class="panel cw">
+  <!-- ============ Ethylene monitor: engineering detail ============ -->
+  <div class="monitor" id="monitorView" role="tabpanel" aria-label="Ethylene monitor" hidden>
+    <section class="rack" aria-labelledby="rackTitle">
       <div class="phead">
-        <h2>Caution and warning</h2>
-        <span class="pmeta" id="cwSummary"></span>
+        <h2 id="rackTitle">Pods</h2>
+        <span class="pmeta" id="eatOrder"></span>
       </div>
-      <div class="cw-grid" id="cwGrid" role="table" aria-label="Caution and warning lamps per pod"></div>
-      <div class="cw-key" aria-hidden="true">
-        <span><i class="key key-warning"></i>Warning</span>
-        <span><i class="key key-caution"></i>Caution</span>
-        <span><i class="key key-advisory"></i>Advisory</span>
-        <span><i class="key key-off"></i>Off</span>
-        <span><i class="key key-na"></i>Not fitted</span>
-      </div>
-    </div>
+      <div class="pods" id="pods"></div>
+    </section>
 
-    <div class="panel cam">
+    <section class="plots" aria-labelledby="selTitle">
       <div class="phead">
-        <h2>Camera, POD-1</h2>
-        <span class="pmeta" id="camMeta">No downlink</span>
+        <h2 id="selTitle">POD-1</h2>
+        <span class="pmeta" id="selSource"></span>
+        <div class="phead-r">
+          <div class="seg seg-sm" role="group" aria-label="Time range" id="rangeSeg">
+            <button type="button" data-range="all" aria-pressed="true">Run</button>
+            <button type="button" data-range="3600" aria-pressed="false">1 h</button>
+            <button type="button" data-range="900" aria-pressed="false">15 min</button>
+          </div>
+          <button type="button" class="btn sm" id="btnMark" title="Set the baseline to the two minutes before now and mark produce loaded"><i class="ph ph-flag" aria-hidden="true"></i><span>Mark load</span></button>
+        </div>
       </div>
-      <div class="cam-view">
-        <div class="cam-empty" id="camEmpty">
-          <i class="ph ph-video-camera-slash" aria-hidden="true"></i>
-          <p id="camMsg">No downlink. Experiment 3 ran without a camera. Connect the XIAO to see frames here.</p>
+
+      <dl class="readouts" id="readouts"></dl>
+
+      <div class="chart chart-primary">
+        <div class="chead">
+          <span class="ct">Ethylene rise above baseline</span><span class="cu">ppb</span>
+          <span class="legend">
+            <span class="lg"><i class="sw sw-data"></i>Temp-corrected</span>
+            <span class="lg"><i class="sw sw-raw"></i>As read</span>
+          </span>
+          <span class="cr" id="roPrimary"></span>
         </div>
-        <img id="camImg" alt="Latest frame from the XIAO camera in POD-1" hidden>
+        <div class="cbody" id="cPrimary"></div>
       </div>
-      <div class="cam-preds" id="camPreds" aria-live="polite"></div>
-      <form class="cam-form" id="camForm" autocomplete="off">
-        <div class="field">
-          <label for="camIp">Camera IP</label>
-          <input id="camIp" inputmode="decimal" spellcheck="false">
+      <div class="chart">
+        <div class="chead"><span class="ct">Ripening rate</span><span class="cu">ppb/h, 30 min, fan runs excluded</span><span class="cr" id="roRate"></span></div>
+        <div class="cbody" id="cRate"></div>
+      </div>
+      <div class="chart">
+        <div class="chead"><span class="ct">Sensor temperature</span><span class="cu">&deg;C</span><span class="cr" id="roTemp"></span></div>
+        <div class="cbody" id="cTemp"></div>
+      </div>
+      <div class="chart">
+        <div class="chead"><span class="ct">Humidity</span><span class="cu">%RH</span><span class="cr" id="roRh"></span></div>
+        <div class="cbody" id="cRh"></div>
+      </div>
+      <div class="chart chart-state">
+        <div class="chead"><span class="ct">Fan and vent advice</span><span class="cu">filled: fan ran, outline: advised</span><span class="cr" id="roFan"></span></div>
+        <div class="cbody" id="cFan"></div>
+      </div>
+    </section>
+
+    <section class="side" aria-label="Alerts, camera and log">
+      <div class="panel cw">
+        <div class="phead">
+          <h2>Caution and warning</h2>
+          <span class="pmeta" id="cwSummary"></span>
         </div>
-        <div class="field">
-          <label for="camEvery">Every</label>
-          <select id="camEvery">
-            <option value="10">10 s</option>
-            <option value="60">1 min</option>
-            <option value="1800">30 min</option>
-          </select>
+        <div class="cw-grid" id="cwGrid" role="table" aria-label="Caution and warning lamps per pod"></div>
+        <div class="cw-key" aria-hidden="true">
+          <span><i class="key key-warning"></i>Warning</span>
+          <span><i class="key key-caution"></i>Caution</span>
+          <span><i class="key key-advisory"></i>Advisory</span>
+          <span><i class="key key-off"></i>Off</span>
+          <span><i class="key key-na"></i>Not fitted</span>
         </div>
-        <label class="chk"><input type="checkbox" id="camClassify" checked> Classify</label>
-        <button type="submit" class="btn" id="btnCam">Connect</button>
-      </form>
-      <details class="cam-model">
-        <summary>Classifier model</summary>
-        <div class="field">
-          <label for="camModel">Teachable Machine link</label>
-          <input id="camModel" spellcheck="false">
+      </div>
+
+      <div class="panel cam">
+        <div class="phead">
+          <h2>Camera, POD-1</h2>
+          <span class="pmeta" id="camMeta">No downlink</span>
         </div>
-      </details>
+        <div class="cam-view">
+          <div class="cam-empty" id="camEmpty">
+            <i class="ph ph-video-camera-slash" aria-hidden="true"></i>
+            <p id="camMsg">No downlink. Experiment 3 ran without a camera. Connect the XIAO to see frames here.</p>
+          </div>
+          <img id="camImg" alt="Latest frame from the XIAO camera in POD-1" hidden>
+        </div>
+        <div class="cam-preds" id="camPreds" aria-live="polite"></div>
+        <form class="cam-form" id="camForm" autocomplete="off">
+          <div class="field">
+            <label for="camIp">Camera IP</label>
+            <input id="camIp" inputmode="decimal" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="camEvery">Every</label>
+            <select id="camEvery">
+              <option value="10">10 s</option>
+              <option value="60">1 min</option>
+              <option value="1800">30 min</option>
+            </select>
+          </div>
+          <label class="chk"><input type="checkbox" id="camClassify" checked> Classify</label>
+          <button type="submit" class="btn" id="btnCam">Connect</button>
+        </form>
+        <details class="cam-model">
+          <summary>Classifier model</summary>
+          <div class="field">
+            <label for="camModel">Teachable Machine link</label>
+            <input id="camModel" spellcheck="false">
+          </div>
+        </details>
+      </div>
+
+      <div class="panel events">
+        <div class="phead">
+          <h2>Event log</h2>
+          <span class="pmeta" id="evCount"></span>
+        </div>
+        <ol class="evlist" id="evList" aria-live="polite"></ol>
+      </div>
+    </section>
+  </div>
+
+  <!-- ============ Footer: data source and replay controls ============ -->
+  <footer class="footbar">
+    <div class="seg seg-sm" role="group" aria-label="Data source" id="modeSeg">
+      <button type="button" data-mode="replay" aria-pressed="true">Replay</button>
+      <button type="button" data-mode="live" aria-pressed="false">Live</button>
     </div>
 
-    <div class="panel events">
-      <div class="phead">
-        <h2>Event log</h2>
-        <span class="pmeta" id="evCount"></span>
+    <div class="transport" id="replayBar">
+      <button type="button" class="btn icon sm" id="btnPlay" aria-label="Pause replay"><i class="ph ph-pause" aria-hidden="true"></i></button>
+      <div class="seg seg-sm" role="group" aria-label="Replay speed" id="speedSeg">
+        <button type="button" data-speed="1" aria-pressed="false">1x</button>
+        <button type="button" data-speed="10" aria-pressed="true">10x</button>
+        <button type="button" data-speed="60" aria-pressed="false">60x</button>
+        <button type="button" data-speed="300" aria-pressed="false">300x</button>
       </div>
-      <ol class="evlist" id="evList" aria-live="polite"></ol>
+      <input type="range" id="scrub" min="0" max="14400" step="10" value="0" aria-label="Replay position">
+      <label class="btn sm" for="csvInput" title="Replace POD-1 with a CSV from the logging script"><i class="ph ph-file-csv" aria-hidden="true"></i><span>CSV</span></label>
+      <input type="file" id="csvInput" accept=".csv,.txt,text/csv" hidden>
     </div>
-  </section>
 
-  <footer class="statusbar" id="statusbar">
-    <span id="sbSource"></span>
-    <span id="sbCorr"></span>
-    <span id="sbNote">Thresholds are placeholders. Tune them in js/config.js</span>
-    <a id="sbRepo" href="https://github.com/shuiee/dashboard" target="_blank" rel="noopener">Source</a>
+    <div class="transport" id="liveBar" hidden>
+      <button type="button" class="btn sm" id="btnSerial"><i class="ph ph-usb" aria-hidden="true"></i><span>Connect DGS2</span></button>
+      <span class="live-state" id="serialState">Sensor not connected</span>
+    </div>
+
+    <span class="foot-src" id="sbSource"></span>
+    <span class="foot-note" id="sbNote"></span>
+    <a class="foot-link" href="https://github.com/shuiee/dashboard" target="_blank" rel="noopener">Source</a>
   </footer>
 </div>
 

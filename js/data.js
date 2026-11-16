@@ -92,7 +92,7 @@
    * halved it in about two minutes).
    */
   const PROFILES = {
-    apple: { emit: h => 110 + 12 * h, rhMax: 74, baseRaw: -96, tOff: 0.15, seed: 11 },
+    apple: { emit: h => 165 + 14 * h, rhMax: 74, baseRaw: -96, tOff: 0.15, seed: 11 },
     tomato: { emit: h => 25 + 22 * h, rhMax: 80, baseRaw: -182, tOff: -0.1, seed: 23 },
     avocado: { emit: h => 25 + 560 / (1 + Math.exp(-(h - 2.4) * 2.0)), rhMax: 71, baseRaw: -214, tOff: 0.05, seed: 37 },
   };
@@ -108,7 +108,7 @@
     const S = new F.Series(cfg);
     const dt = cfg.run.sampleS, n = Math.floor(durationS / dt);
     const kLeak = 1 / (8 * 3600), kFan = Math.LN2 / 90;
-    let C = 0, rh = 42, fanUntil = -1, cooldownUntil = -1, based = false;
+    let C = 0, rh = 42, fanUntil = -1, cooldownUntil = -1, based = false, prevSt = null;
 
     for (let k = 0; k <= n; k++) {
       const t = k * dt;
@@ -128,9 +128,9 @@
         based = true;
       }
       // Same rule the console shows: the pod decides, then the fan runs on the next samples.
+      if (based) prevSt = F.rules.evaluate(S, i, pod, cfg, prevSt, null);
       if (based && pod.fan && !fan && t >= cooldownUntil) {
-        const v = F.rules.ventDecision(S, i, pod, cfg);
-        if (v.advised) {
+        if (prevSt.vent.advised) {
           fanUntil = t + R.fanRunS + 0.001;
           cooldownUntil = fanUntil + R.fanCooldownS;
         }
