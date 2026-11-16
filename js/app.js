@@ -296,29 +296,24 @@
     return out;
   }
 
+  /*
+   * Crew view: one tile per pod, nothing else unless something needs a person.
+   * A tile shows the eat-order number, the fruit in its porthole and one readiness word.
+   * The fan line appears only while a fan runs or a pod with no fan needs venting.
+   */
   function buildTiles() {
     const wrap = $('tiles');
     wrap.innerHTML = '';
-    const keys = cfg.eat.stages.map(s => '<span>' + s.word + '</span>').join('');
     S.tileEls = cfg.pods.map((pc, k) => {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'tile';
-      b.setAttribute('aria-label', pc.fruit + ', ' + pc.id + '. Open in the ethylene monitor');
       b.innerHTML =
         '<div class="tile-in">' +
-        '<div class="tile-top">' + F.fruitIcon(pc, { porthole: true }) +
-        '<div class="tile-id"><div class="tile-pod">' + pc.id + '</div><div class="tile-rank" data-f="rank"></div></div>' +
-        '</div>' +
-        '<div class="tile-mid">' +
-        '<div class="stage"><div class="stage-word" data-f="word"></div><div class="stage-label" data-f="label"></div></div>' +
-        '<div class="meter" data-f="meter"><span></span><span></span><span></span><span></span></div>' +
-        '<div class="meter-k" data-f="meterk">' + keys + '</div>' +
-        '</div>' +
-        '<div class="tile-bot">' +
-        '<div class="tile-vent"><i class="ph ph-fan" aria-hidden="true"></i><div><div class="vent-word" data-f="vent"></div><div class="vent-sub" data-f="ventSub"></div></div></div>' +
-        '<div class="tile-gas"><div><div class="gas-k">Ethylene</div><div class="gas-v" data-f="gas"></div></div><canvas data-f="spark" aria-hidden="true"></canvas></div>' +
-        '</div>' +
+        '<div class="tile-top"><span class="rank" data-f="rank"></span><span class="tile-pod">' + pc.id + '</span></div>' +
+        '<div class="tile-ico">' + F.fruitIcon(pc, { porthole: true }) + '</div>' +
+        '<div class="stage-word" data-f="word"></div>' +
+        '<div class="tile-vent" data-f="ventRow"><i class="ph ph-fan" aria-hidden="true"></i><span data-f="vent"></span></div>' +
         '</div>';
       b.addEventListener('click', () => { if (b.dataset.offline !== '1') { select(k); setView('monitor'); } });
       const f = {};
@@ -333,113 +328,59 @@
   const setHtml = (el, s) => { if (el._h !== s) { el._h = s; el.innerHTML = s; } };
 
   function renderCrew(views, ranked, rank) {
-    const n = ranked.length;
-    const xrFull = S.mode === 'replay' ? [0, S.duration] : [0, Math.max(now(), 600)];
-
-    // Tiles
     views.forEach((v, k) => {
       const { b, f } = S.tileEls[k];
       const stage = stageOf(v);
       const vs = ventState(v);
+      let word;
+      if (v.offline) word = 'No link';
+      else if (!v.st) word = 'No data';
+      else if (!v.st.loaded) word = 'Empty';
+      else if (stage === 'spoiled') word = 'Check';
+      else word = cfg.eat.stages[v.st.stage].word;
+
       b.dataset.offline = v.offline ? '1' : '0';
       b.dataset.stage = stage || 'none';
-      b.dataset.vent = vs.key;
-      let word, label, idx = -1;
-      if (v.offline) { word = 'No link'; label = 'Not connected in live mode'; }
-      else if (!v.st) { word = 'No data'; label = 'Waiting for the first reading'; }
-      else if (!v.st.loaded) { word = 'Empty'; label = 'Measuring the empty pod'; }
-      else if (stage === 'spoiled') { word = 'Check'; label = 'Camera sees possible spoilage'; idx = 3; }
-      else { const sg = cfg.eat.stages[v.st.stage]; word = sg.word; label = sg.label; idx = v.st.stage; }
+      b.dataset.first = rank[k] === 1 ? '1' : '0';
       setText(f.word, word);
-      setText(f.label, label);
-      setHtml(f.rank, rank[k] ? '<span>Eat order</span> <b>' + rank[k] + '</b> <span>of ' + n + '</span>' : '&nbsp;');
-      [...f.meter.children].forEach((s, m) => { s.className = m < idx ? 'on' : m === idx ? 'cur' : ''; });
-      [...f.meterk.children].forEach((s, m) => { s.className = m === idx ? 'cur' : ''; });
-      setText(f.vent, vs.word);
-      setText(f.ventSub, vs.sub);
-      if (v.st && !v.offline) {
-        const rate = Number.isFinite(v.st.rate30) && v.st.loaded ? ', ' + fmt.signed(v.st.rate30) + '<small> ppb/h</small>' : '';
-        setHtml(f.gas, fmt.signed(v.st.delta) + '<small> ppb</small>' + rate);
-        F.charts.spark(f.spark, v.P.series.t, v.P.series.delta, v.i, xrFull, null);
-      } else {
-        setHtml(f.gas, 'N/A');
-        F.charts.spark(f.spark, null, null, -1, xrFull);
-      }
+      setText(f.rank, rank[k] ? String(rank[k]) : '');
+
+      // Fan line only when something is happening
+      const show = vs.key === 'on' || vs.key === 'need';
+      b.dataset.vent = show ? vs.key : 'off';
+      setText(f.vent, vs.key === 'on' ? 'Venting' : vs.key === 'need' ? 'Open vent' : '');
+
+      const label = v.pc.fruit + ', ' + v.pc.id + '. ' + word +
+        (rank[k] ? '. Eat ' + ordinal(rank[k]) : '') + (show ? '. ' + vs.word : '') + '. Open details';
+      if (b._label !== label) { b._label = label; b.setAttribute('aria-label', label); }
     });
 
-    // Eat next
-    const next = $('nextFruit').closest('.brief-cell');
-    const top = ranked[0];
-    let iconKey = '';
-    if (!top) {
-      setText($('nextFruit'), S.mode === 'live' ? 'Waiting for data' : 'Nothing loaded');
-      setText($('nextSub'), S.mode === 'live' ? 'Connect the sensor and press Mark load when the produce goes in.' : '');
-      next.dataset.sev = '';
-    } else {
-      const st = stageOf(top.v), pc = top.v.pc;
-      const second = ranked[1] && ['ready', 'now', 'spoiled'].includes(stageOf(ranked[1].v)) ? ranked[1].v.pc : null;
-      if (st === 'spoiled') {
-        iconKey = pc.id;
-        setText($('nextFruit'), 'Inspect first');
-        setHtml($('nextSub'), pc.id + ': the camera sees possible spoilage.');
-        next.dataset.sev = 'warning';
-      } else if (st === 'ready' || st === 'now') {
-        iconKey = pc.id;
-        setText($('nextFruit'), cfg.eat.stages[top.v.st.stage].label);
-        setHtml($('nextSub'), pc.id + '. ' + (second ? 'Then ' + who(second) + '.' : 'Nothing else is ready yet.'));
-        next.dataset.sev = st === 'now' ? 'caution' : '';
-      } else {
-        setText($('nextFruit'), 'Nothing ready');
-        setHtml($('nextSub'), 'First ready: ' + who(pc));
-        next.dataset.sev = '';
-      }
-    }
-    if (S.heroIcon !== iconKey) {
-      S.heroIcon = iconKey;
-      $('nextIcon').innerHTML = iconKey ? F.fruitIcon(top.v.pc, { porthole: true }) : '';
-    }
-
-    // Ventilation
-    const on = [], need = [];
-    views.forEach(v => { const vs = ventState(v); if (vs.key === 'on') on.push(v.pc); if (vs.key === 'need') need.push(v.pc); });
-    const list = pcs => pcs.map(who).join(', ');
-    if (on.length) {
-      setText($('ventSum'), on.length > 1 ? 'Fans on' : 'Fan on');
-      setHtml($('ventSub'), list(on) + (need.length ? '. Also vent ' + list(need) + ' by hand.' : '. Automatic, about 2 min. Nothing to do.'));
-    } else if (need.length) {
-      setText($('ventSum'), 'Vent by hand');
-      setHtml($('ventSub'), list(need) + ' has no fan. Open its vent for about 2 min.');
-    } else {
-      setText($('ventSum'), 'All sealed');
-      setText($('ventSub'), 'No venting needed right now.');
-    }
-    $('ventSum').parentElement.dataset.sev = need.length ? 'advisory' : on.length ? 'on' : '';
-
-    // Crew actions
+    // One line per thing the crew must do; hidden when there is nothing.
     const acts = crewActions(views);
-    const sig = acts.map(a => a.sev + a.text + a.sub).join('|');
+    const sig = acts.map(a => a.sev + a.text).join('|');
     if (sig !== S.actSig) {
       S.actSig = sig;
       const ul = $('actions');
       ul.textContent = '';
-      if (!acts.length) {
-        const li = document.createElement('li'); li.className = 'act-none'; li.textContent = 'No action needed';
-        ul.appendChild(li);
-      }
-      acts.slice(0, 4).forEach(a => {
-        const li = document.createElement('li'); li.className = 'act';
+      ul.hidden = !acts.length;
+      acts.slice(0, 3).forEach(a => {
+        const li = document.createElement('li');
+        li.className = 'notice';
+        li.dataset.sev = a.sev;
         const sv = document.createElement('span'); sv.className = 'sev sev-' + a.sev; sv.textContent = a.sev;
         const tx = document.createElement('span'); tx.innerHTML = a.text;
-        const sm = document.createElement('small'); sm.textContent = a.sub; tx.appendChild(sm);
         li.append(sv, tx);
         ul.appendChild(li);
       });
     }
   }
 
+  const ordinal = n => n + (n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th');
+
   function setView(v) {
     S.view = v;
     store.set('view', v);
+    $('console').dataset.view = v;
     $('crewView').hidden = v !== 'crew';
     $('monitorView').hidden = v !== 'monitor';
     $('viewTabs').querySelectorAll('button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.view === v)));

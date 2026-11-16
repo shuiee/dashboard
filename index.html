@@ -40,28 +40,9 @@
 
   <!-- ============ Crew view: what to eat, what to vent ============ -->
   <main class="crew" id="crewView" role="tabpanel" aria-label="Crew view">
-    <section class="brief" aria-label="Summary">
-      <div class="brief-cell brief-next">
-        <div class="bk">Eat next</div>
-        <div class="hero">
-          <span id="nextIcon"></span>
-          <div class="hero-txt">
-            <div class="bv" id="nextFruit">N/A</div>
-            <div class="bs" id="nextSub"></div>
-          </div>
-        </div>
-      </div>
-      <div class="brief-cell brief-vent">
-        <div class="bk">Ventilation</div>
-        <div class="bv" id="ventSum">N/A</div>
-        <div class="bs" id="ventSub"></div>
-      </div>
-      <div class="brief-cell brief-act">
-        <div class="bk">Crew actions</div>
-        <ul class="actions" id="actions"></ul>
-      </div>
-    </section>
-    <section class="tiles" id="tiles" aria-label="Pods"></section>
+    <!-- Appears only when the crew has to do something other than eat -->
+    <ul class="notices" id="actions" aria-live="polite" hidden></ul>
+    <section class="tiles" id="tiles" aria-label="Pods, numbered in the order to eat them"></section>
   </main>
 
   <!-- ============ Ethylene monitor: engineering detail ============ -->

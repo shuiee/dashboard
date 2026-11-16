@@ -8,18 +8,22 @@ Operator console for **Fresh Food Off Earth**: modular sealed pods, one fruit ea
 
 ### Crew view (default)
 
-Built to be read in a few seconds. It answers two questions and stays quiet otherwise ("dark cockpit": nothing lights up unless it needs you).
+Built to be read in a few seconds, on the "dark cockpit" principle: nothing appears unless it matters.
 
-| Area | What it answers |
-|---|---|
-| **Eat next** | Which fruit to eat now, and what comes after it |
-| **Ventilation** | Whether any fan is running, or a pod with no fan needs venting by hand |
-| **Crew actions** | Anything else that needs a person (sensor stopped, condensation, battery, spoilage seen by the camera). Says *No action needed* most of the time, on purpose |
-| **Pod tiles** | One per pod, in fixed positions: the fruit as an icon in a spacecraft porthole, its eat order, a big readiness word (Wait, Soon, Ready, Eat now) with a four-step bar, the fan state, and one small ethylene line |
+Each pod gets one tile, always in the same position, with just three things:
+
+1. **Eat order**: the big number in the corner (1 = eat first).
+2. **The fruit**: an icon in a spacecraft porthole. The rim turns amber when it should be eaten today.
+3. **One word**: *Wait*, *Soon*, *Ready* or *Eat now* (amber).
+
+Everything else stays hidden until it needs someone:
+
+- **Venting** appears under a pod only while its fan runs; **Open vent** (outlined) appears only when a pod without a fan needs venting by hand.
+- **A notice line** appears above the tiles only when the crew must act (sensor stopped, condensation, battery, spoilage seen by the camera).
 
 Click a tile to open that pod in the ethylene monitor.
 
-**Always one screen.** The crew view never scrolls, from a phone to a projector. Each tile is a CSS size container, so its text and porthole scale with the space it gets, and the least important detail (the ethylene line, then the stage labels) drops out first when space is short. Landscape screens show the pods in one row; portrait screens show a 2 x 2 block.
+**Always one screen.** The crew view never scrolls, from a phone to a projector. Each tile is a CSS size container, so the number, porthole and word scale with the space they get. Landscape screens show the pods in one row; portrait screens show a 2 x 2 block.
 
 **Fruit icons, not names.** Fruits are shown as icons so they can be recognised at a glance; the name stays in a hover tooltip and for screen readers. The rim of the porthole turns amber when that fruit should be eaten today.
 
