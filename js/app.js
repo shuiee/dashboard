@@ -319,9 +319,10 @@
       b.type = 'button';
       b.className = 'tile';
       b.innerHTML =
+        '<span class="brackets" aria-hidden="true"></span>' +
         '<div class="tile-in">' +
-        '<div class="tile-top"><span class="rank" data-f="rank"></span><span class="tile-pod">' + pc.id + '</span></div>' +
-        '<div class="tile-ico">' + F.fruitIcon(pc, { porthole: true }) + '</div>' +
+        '<div class="tile-top"><span class="tile-pod">' + pc.id + '</span><span class="rank" data-f="rank"></span></div>' +
+        '<div class="tile-ico">' + F.fruitIcon(pc, { globe: true }) + '</div>' +
         '<div class="stage-word" data-f="word"></div>' +
         '<div class="tile-vent" data-f="ventRow"><i class="ph ph-fan" aria-hidden="true"></i><span data-f="vent"></span></div>' +
         '</div>';

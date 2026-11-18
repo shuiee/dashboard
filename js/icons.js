@@ -22,10 +22,37 @@
    * Fruit icon. With porthole: true it sits in a round spacecraft-window frame.
    * The fruit name stays available to screen readers and as a hover tooltip.
    */
+  /*
+   * Wireframe globe built from circles and ellipses: the outline, three latitude bands seen
+   * from slightly above, and three meridians. After the "EST. EARTH RELATIVE" display.
+   */
+  const TILT = 0.26; // sin of the viewing angle above the equator
+  function globeWire() {
+    const R = 46, c = 50;
+    let s = '<circle cx="50" cy="50" r="46"/>';
+    [0, 30, -30, 60, -60].forEach(lat => {
+      const a = lat * Math.PI / 180;
+      const rx = R * Math.cos(a);
+      s += '<ellipse class="lat" cx="' + c + '" cy="' + (c - R * Math.sin(a) * Math.cos(Math.asin(TILT))).toFixed(1) +
+        '" rx="' + rx.toFixed(1) + '" ry="' + (rx * TILT).toFixed(1) + '"/>';
+    });
+    [30, 60].forEach(lon => {
+      s += '<ellipse class="lon" cx="50" cy="50" rx="' + (R * Math.sin(lon * Math.PI / 180)).toFixed(1) + '" ry="46"/>';
+    });
+    s += '<line class="lon" x1="50" y1="4" x2="50" y2="96"/>';
+    return s;
+  }
+
   F.fruitIcon = function (pod, opts) {
     const o = opts || {};
     const key = pod.icon || pod.fruit.toLowerCase();
     const svg = '<svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">' + (GLYPHS[key] || '') + '</svg>';
+    if (o.globe) {
+      return '<span class="globe" role="img" aria-label="' + pod.fruit + '" title="' + pod.fruit + '">' +
+        '<span class="floor" aria-hidden="true"></span>' +
+        '<svg class="wire" viewBox="0 0 100 100" aria-hidden="true" focusable="false">' + globeWire() + '</svg>' +
+        '<span class="globe-fruit">' + svg + '</span></span>';
+    }
     const cls = (o.porthole ? 'porthole' : 'fi') + (o.cls ? ' ' + o.cls : '');
     return '<span class="' + cls + '" role="img" aria-label="' + pod.fruit + '" title="' + pod.fruit + '">' +
       (o.porthole ? '<span class="porthole-glass">' + svg + '</span>' : svg) + '</span>';

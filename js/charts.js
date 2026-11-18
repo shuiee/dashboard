@@ -248,6 +248,8 @@
       ctx.save();
       ctx.strokeStyle = s.color === 'data2' ? C.data2 : C.data;
       ctx.lineWidth = s.width || 2;
+      // phosphor glow, as on a vector CRT
+      ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 6;
       ctx.lineJoin = 'round'; ctx.lineCap = 'round';
       if (s.dash) ctx.setLineDash(s.dash);
       const count = i1 - i0 + 1;
