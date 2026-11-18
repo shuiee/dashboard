@@ -16,7 +16,7 @@
   };
 
   const S = {
-    mode: 'replay',
+    mode: F.feeds.kind(cfg) === 'none' ? 'replay' : 'live',
     playing: true,
     speed: cfg.replay.speed,
     simT: cfg.replay.startAtS,
@@ -70,63 +70,111 @@
   }
 
   /* ================= live ================= */
+  /*
+   * Live mode: each pod with live: true in config gets its own feed (feeds.js). Readings arrive
+   * as epoch ms; the series uses seconds since S.live.originMs, the earliest reading loaded.
+   * The baseline comes from meta.loadT, which the operator sets from the bridge (l + Enter).
+   */
   function initLive() {
     if (S.live) return;
-    const pc = cfg.pods[0];
-    const series = new F.Series(cfg, cfg.sensor.livePollMs / 1000);
-    S.live = {
-      startMs: Date.now(),
-      pod: { cfg: pc, label: 'Live DGS2', series, states: [], events: [], rateArr: [], live: true },
-      prev: null, onset: {}, stale: false, autoBase: false, sysEvents: [],
-      dgs: new F.live.DGS2(cfg, onLiveSample, onSerialStatus),
-    };
+    S.live = { pods: {}, conn: 'connecting', msg: '', originMs: null, sysEvents: [] };
+    cfg.pods.forEach((pc, k) => {
+      if (!pc.live) return;
+      const LP = {
+        k, cfg: Object.assign({}, pc), label: 'Live',
+        series: new F.Series(cfg, cfg.cloud.pushS), states: [], events: [], rateArr: [],
+        live: true, prev: null, onset: {}, stale: false, meta: {}, ready: false, lastLoadT: undefined,
+      };
+      S.live.pods[k] = LP;
+      F.feeds.start(cfg, pc.id, {
+        onStatus: (state, msg) => onLiveStatus(LP, state, msg),
+        onMeta: meta => onLiveMeta(LP, meta),
+        onHistory: list => onLiveHistory(LP, list),
+        onReading: r => onLiveReading(LP, r),
+      }).then(feed => { LP.feed = feed; });
+    });
+    if (!Object.keys(S.live.pods).length) onLiveStatus(null, 'setup', 'No pod has live: true in js/config.js');
   }
-  const liveNow = () => (Date.now() - S.live.startMs) / 1000;
 
-  function onLiveSample(s) {
-    const L = S.live, P = L.pod, series = P.series;
-    const t = liveNow();
-    const i = series.push({ t, raw: s.raw, temp: s.temp, rh: s.rh, fan: 0 });
-    $('serialState').textContent = 'DGS2 ' + (L.dgs.serial || '') + ': ' + fmt.num(s.raw, 0) + ' ppb at ' + fmt.num(s.temp, 2) + ' °C';
-    if (!L.autoBase && series.loadT == null && t >= 60) {
-      // Provisional baseline from the first minute until someone presses Mark load.
-      series.setBaseline(0, 60, null);
-      L.autoBase = true;
-      rebuildLive();
-      return;
+  const liveNow = () => (F.feeds.serverNow() - (S.live && S.live.originMs != null ? S.live.originMs : F.feeds.serverNow())) / 1000;
+  const liveT = ms => (ms - S.live.originMs) / 1000;
+
+  function onLiveStatus(LP, state, msg) {
+    const L = S.live;
+    if (L.conn !== state && L.conn && S.mode === 'live' && (state === 'offline' || (state === 'online' && L.conn === 'offline'))) {
+      logSys(state === 'offline' ? 'CAUT' : 'INFO', state === 'offline' ? 'Lost connection to the database' : 'Connection restored', LP && LP.cfg.id);
     }
-    const st = F.rules.evaluate(series, i, P.cfg, cfg, L.prev, null);
-    F.rules.diffEvents(P.cfg, series, L.prev, st, P.events, L.onset, cfg);
-    st.onset = Object.assign({}, L.onset);
-    P.states.push(st);
-    P.rateArr.push(st.rate30);
-    L.prev = st;
+    L.conn = state;
+    L.msg = msg || '';
     S.dirty = true;
   }
 
-  function rebuildLive() {
-    const L = S.live, P = L.pod;
-    const tl = F.rules.buildTimeline(P.cfg, P.series, cfg);
-    P.states = tl.states;
-    P.events = tl.events;
-    P.rateArr = tl.states.map(s => s.rate30);
-    L.prev = tl.states[tl.states.length - 1] || null;
-    L.onset = L.prev ? Object.assign({}, L.prev.onset) : {};
+  function onLiveMeta(LP, meta) {
+    LP.meta = meta || {};
+    if (LP.meta.fruit) {
+      const name = String(LP.meta.fruit);
+      LP.cfg.fruit = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+      LP.cfg.icon = name.toLowerCase();
+      buildTiles(); buildPodPick();
+    }
+    if (LP.ready && LP.meta.loadT !== LP.lastLoadT) { applyLiveBaseline(LP); rebuildLive(LP); }
+    renderHeader();
+    S.dirty = true;
+  }
+
+  function onLiveHistory(LP, list) {
+    const L = S.live;
+    if (L.originMs == null) L.originMs = list.length ? list[0].t : F.feeds.serverNow();
+    for (const r of list) LP.series.push({ t: liveT(r.t), raw: r.ppb, temp: r.temp, rh: r.rh, fan: 0 });
+    LP.ready = true;
+    applyLiveBaseline(LP);
+    rebuildLive(LP);
+  }
+
+  function onLiveReading(LP, r) {
+    if (S.live.originMs == null) S.live.originMs = r.t;
+    const series = LP.series;
+    const t = liveT(r.t);
+    if (t <= series.lastT) return; // duplicate or out of order
+    const i = series.push({ t, raw: r.ppb, temp: r.temp, rh: r.rh, fan: 0 });
+    if (series.loadT == null && !LP.autoBase && t - series.t[0] >= 60) { applyLiveBaseline(LP); rebuildLive(LP); return; }
+    const st = F.rules.evaluate(series, i, LP.cfg, cfg, LP.prev, null);
+    F.rules.diffEvents(LP.cfg, series, LP.prev, st, LP.events, LP.onset, cfg);
+    st.onset = Object.assign({}, LP.onset);
+    LP.states.push(st);
+    LP.rateArr.push(st.rate30);
+    LP.prev = st;
+    S.dirty = true;
+  }
+
+  /** Baseline = the two minutes before the load mark; before any mark, the first minute (provisional). */
+  function applyLiveBaseline(LP) {
+    const s = LP.series;
+    LP.lastLoadT = LP.meta.loadT;
+    if (!s.length) return;
+    if (LP.meta.loadT) {
+      const t = liveT(LP.meta.loadT);
+      if (!s.setBaseline(t - 120, t - 2, t)) s.setBaseline(t, t + 60, t); // no data before the mark: use the first minute after
+    } else if (s.lastT - s.t[0] >= 60) {
+      s.setBaseline(s.t[0], s.t[0] + 60, null);
+      LP.autoBase = true;
+    }
+  }
+
+  function rebuildLive(LP) {
+    const tl = F.rules.buildTimeline(LP.cfg, LP.series, cfg);
+    LP.states = tl.states;
+    LP.events = tl.events;
+    LP.rateArr = tl.states.map(s => s.rate30);
+    LP.prev = tl.states[tl.states.length - 1] || null;
+    LP.onset = LP.prev ? Object.assign({}, LP.prev.onset) : {};
     S.evSig = null;
     S.dirty = true;
   }
 
-  function onSerialStatus(state, msg) {
-    $('serialState').textContent = msg;
-    const btn = $('btnSerial');
-    btn.querySelector('span').textContent = state === 'connected' ? 'Disconnect' : 'Connect DGS2';
-    if (S.live && state === 'error') logSys('CAUT', msg);
-    if (S.live && state === 'connected') logSys('INFO', 'DGS2 connected over Web Serial, read-only polling');
-  }
-
-  function logSys(sev, text) {
+  function logSys(sev, text, podId) {
     if (!S.live) return;
-    S.live.sysEvents.push({ t: liveNow(), pod: 'POD-1', sev, text });
+    S.live.sysEvents.push({ t: liveNow(), pod: podId || 'POD-1', sev, text });
     S.evSig = null;
     S.dirty = true;
   }
@@ -145,8 +193,12 @@
 
   function view(k) {
     const pc = cfg.pods[k];
-    if (S.mode === 'live' && k !== 0) return { pc, offline: true, now: liveNow() };
-    const P = S.mode === 'live' ? S.live.pod : S.pods[k];
+    if (S.mode === 'live') {
+      const LP = S.live && S.live.pods[k];
+      if (!LP) return { pc, offline: true, noSensor: true, now: liveNow() };
+      if (!LP.series.length) return { pc: LP.cfg, offline: true, noSignal: true, now: liveNow() };
+    }
+    const P = S.mode === 'live' ? S.live.pods[k] : S.pods[k];
     const t = now();
     const i = P.series.indexAt(t);
     let st = i >= 0 ? P.states[i] : null;
@@ -156,7 +208,7 @@
       if (S.mode === 'live') ctx.stale = t - P.series.lastT > R.staleFactor * P.series.nominalDt;
       if (k === 0 || ctx.stale) st = F.rules.applyContext(Object.assign({}, st), ctx);
     }
-    return { pc, P, i, st, now: t };
+    return { pc: P.cfg || pc, P, i, st, now: t };
   }
 
   function xRange(t) {
@@ -216,7 +268,7 @@
   }
 
   function ventState(v) {
-    if (v.offline || !v.st) return { key: 'na', word: v.offline ? 'No link' : 'No data', sub: '' };
+    if (v.offline || !v.st) return { key: 'na', word: 'No data', sub: '' };
     const st = v.st, pc = v.pc;
     if (st.fan) {
       const s = v.P.series;
@@ -234,6 +286,12 @@
   /** Things the crew must do that are not eating or venting. Empty most of the time, on purpose. */
   function crewActions(views) {
     const out = [];
+    if (S.mode === 'live' && S.live) {
+      const c = S.live.conn;
+      if (c === 'setup') out.push({ sev: 'CAUT', text: 'Live data not set up', sub: S.live.msg });
+      else if (c === 'offline') out.push({ sev: 'CAUT', text: 'No connection to the database', sub: 'Readings resume when the connection returns' });
+      else if (c === 'error') out.push({ sev: 'CAUT', text: 'Live data error: ' + S.live.msg, sub: '' });
+    }
     views.forEach(v => {
       if (v.offline || !v.st) return;
       const f = v.st.flags, id = who(v.pc);
@@ -285,7 +343,8 @@
       const stage = stageOf(v);
       const vs = ventState(v);
       let word;
-      if (v.offline) word = 'No link';
+      if (v.noSensor) word = 'No sensor';
+      else if (v.offline) word = 'No signal';
       else if (!v.st) word = 'No data';
       else if (!v.st.loaded) word = 'Empty';
       else if (stage === 'spoiled') word = 'Check';
@@ -364,7 +423,8 @@
       while (lo < hi) { const mid = (lo + hi) >> 1; if (S.events[mid].t <= S.simT) lo = mid + 1; else hi = mid; }
       return S.events.slice(0, lo);
     }
-    return S.live.pod.events.concat(S.live.sysEvents).sort((a, b) => a.t - b.t);
+    if (!S.live) return [];
+    return [].concat.apply(S.live.sysEvents, Object.values(S.live.pods).map(LP => LP.events)).sort((a, b) => a.t - b.t);
   }
 
   function renderEvents(all) {
@@ -401,7 +461,7 @@
   /** The three numbers that matter, at the crosshair or now. */
   function renderNums(v, k) {
     if (v.offline || !v.P || k < 0) {
-      setText($('numRise'), 'N/A'); setText($('numRate'), 'N/A'); setText($('numFan'), v.offline ? 'NO LINK' : 'N/A'); setText($('numAt'), '');
+      setText($('numRise'), 'N/A'); setText($('numRate'), 'N/A'); setText($('numFan'), v.noSensor ? 'NO SENSOR' : v.offline ? 'NO SIGNAL' : 'N/A'); setText($('numAt'), '');
       return;
     }
     const st = v.P.states[k];
@@ -417,10 +477,18 @@
     return { on: clip(P.iv.on), adv: clip(P.iv.adv) };
   }
 
+  function liveEmptyMsg() {
+    if (S.mode !== 'live' || !S.live) return 'WAITING FOR DATA';
+    if (S.live.conn === 'setup') return 'LIVE DATA NOT SET UP, SEE SETUP.MD';
+    if (S.live.conn === 'connecting') return 'CONNECTING';
+    if (S.live.conn === 'offline' || S.live.conn === 'error') return 'NO CONNECTION';
+    return 'WAITING FOR THE FIRST READING';
+  }
+
   function drawCharts(v) {
     const c = S.ch.primary;
     if (v.offline || !v.P || v.P.series.length === 0) {
-      c.set({ x: xRange(v.now), now: v.now, t: [], iEnd: -1, series: [], empty: v.offline ? 'NO LINK IN LIVE MODE' : 'WAITING FOR DATA' });
+      c.set({ x: xRange(v.now), now: v.now, t: [], iEnd: -1, series: [], empty: v.noSensor ? 'NO SENSOR ON THIS POD' : liveEmptyMsg() });
       c.draw();
       return -1;
     }
@@ -475,6 +543,26 @@
     S.camPrev = { link: c.link, top };
   }
 
+  /** Top-bar word: is what you see live? */
+  function renderLink() {
+    const el = $('link');
+    let s = 'demo', txt = 'Demo';
+    if (S.mode === 'live' && S.live) {
+      const pods = Object.values(S.live.pods);
+      const last = pods.reduce((m, LP) => Math.max(m, LP.series.length ? LP.series.lastT : -Infinity), -Infinity);
+      const age = liveNow() - last;
+      if (S.live.conn === 'setup') { s = 'off'; txt = 'Not set up'; }
+      else if (S.live.conn === 'offline' || S.live.conn === 'error') { s = 'off'; txt = 'Offline'; }
+      else if (!Number.isFinite(last)) { s = 'off'; txt = S.live.conn === 'connecting' ? 'Connecting' : 'No signal'; }
+      else if (age > R.staleFactor * cfg.cloud.pushS) { s = 'stale'; txt = 'Stale'; }
+      else { s = 'live'; txt = F.feeds.kind(cfg) === 'practice' ? 'Practice' : 'Live'; }
+      const ls = $('liveState');
+      setText(ls, Number.isFinite(last) ? 'Last reading ' + fmt.dur(Math.max(0, age)) + ' ago' : S.live.msg);
+    }
+    el.dataset.s = s;
+    setText(el, txt);
+  }
+
   function renderClocks(t) {
     setText($('clkMet'), fmt.met(t));
   }
@@ -494,14 +582,16 @@
     const v = views[S.sel];
     const { rank, ranked } = eatOrder(views);
 
-    if (S.mode === 'live') {
-      const L = S.live;
-      const stale = L.pod.series.length > 0 && liveNow() - L.pod.series.lastT > R.staleFactor * L.pod.series.nominalDt;
-      if (stale !== L.stale) {
-        L.stale = stale;
-        logSys(stale ? 'CAUT' : 'INFO', stale ? 'No new sensor data' : 'Sensor data resumed');
-      }
+    if (S.mode === 'live' && S.live) {
+      Object.values(S.live.pods).forEach(LP => {
+        const stale = LP.series.length > 0 && liveNow() - LP.series.lastT > R.staleFactor * LP.series.nominalDt;
+        if (stale !== LP.stale) {
+          LP.stale = stale;
+          logSys(stale ? 'CAUT' : 'INFO', stale ? 'No new sensor data' : 'Sensor data resumed', LP.cfg.id);
+        }
+      });
     }
+    renderLink();
 
     const events = currentEvents();
     if (S.view === 'crew') {
@@ -541,11 +631,12 @@
     setPressed('modeSeg', 'mode', m);
     $('replayBar').hidden = m !== 'replay';
     $('liveBar').hidden = m !== 'live';
+    $('btnMark').hidden = m !== 'replay';
     S.ackT = now();
     S.ackWall = Date.now();
     S.evSig = null;
-    if (m === 'live') S.runStartMs = S.live.startMs;
-    else S.runStartMs = S.csv && S.csv.startMs ? S.csv.startMs : Date.parse(cfg.run.start);
+    S.runStartMs = m === 'live' ? (S.live.originMs || Date.now()) : (S.csv && S.csv.startMs ? S.csv.startMs : Date.parse(cfg.run.start));
+    buildTiles(); buildPodPick(); select(S.sel);
     renderHeader();
     renderCam();
     S.dirty = true;
@@ -568,11 +659,7 @@
       S.evSig = null;
       notice(P.cfg.id + ': load marked at ' + fmt.met(t) + ', baseline from the two minutes before');
     } else {
-      if (S.sel !== 0) { notice('Only POD-1 has a live sensor'); return; }
-      const P = S.live.pod, t = liveNow();
-      if (!P.series.setBaseline(t - 120, t - 2, t)) { notice('Need a few readings before marking the load'); return; }
-      rebuildLive();
-      logSys('INFO', 'Load marked by operator');
+      notice('In live mode, mark the load on the sensor laptop: type l and press Enter in the bridge window');
     }
     S.dirty = true;
   }
@@ -617,17 +704,6 @@
     $('csvInput').addEventListener('change', e => { const f = e.target.files[0]; if (f) loadCsvFile(f); e.target.value = ''; });
     $('btnMark').addEventListener('click', markLoad);
     $('btnMaster').addEventListener('click', () => { S.ackT = now(); S.ackWall = Date.now(); S.dirty = true; });
-    $('btnSerial').addEventListener('click', async () => {
-      const d = S.live.dgs;
-      try {
-        if (d.connected) await d.disconnect();
-        else await d.connect();
-      } catch (e) {
-        if (e && e.name === 'NotFoundError') return; // user closed the port picker
-        onSerialStatus('error', e.message || String(e));
-      }
-    });
-
     $('camIp').value = store.get('camIp') || cfg.camera.ip;
     $('camForm').addEventListener('submit', e => {
       e.preventDefault();
@@ -692,6 +768,10 @@
   renderHeader();
   renderCam();
   setView(store.get('view') === 'monitor' ? 'monitor' : 'crew');
+  // Open live when a feed is configured (or ?feed=practice); otherwise the labelled demo.
+  const startMode = S.mode;
+  S.mode = 'replay';
+  if (startMode === 'live') setMode('live');
   requestAnimationFrame(frame);
 
   // Pixel ratio can change without a size change (moving between screens, zoom).

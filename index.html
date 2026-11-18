@@ -17,6 +17,7 @@
   <!-- ============ Status line ============ -->
   <header class="topbar">
     <div class="ident">Fresh Food Off Earth</div>
+    <span class="link" id="link" data-s="demo" title="Is this live sensor data?">Demo</span>
     <div class="clock" title="Mission elapsed time"><span class="k">MET</span><span class="v" id="clkMet">T+00:00:00</span></div>
     <button type="button" class="master" id="btnMaster" aria-live="assertive" aria-label="Master caution, no new alerts">Master caution</button>
   </header>
@@ -66,8 +67,8 @@
     </nav>
 
     <div class="keys" role="group" aria-label="Data source" id="modeSeg">
-      <button type="button" class="key" data-mode="replay" aria-pressed="true">Replay</button>
       <button type="button" class="key" data-mode="live" aria-pressed="false">Live</button>
+      <button type="button" class="key" data-mode="replay" aria-pressed="true" title="Experiment 3 rebuilt from the write-up, other pods simulated">Demo</button>
     </div>
 
     <div class="transport" id="replayBar">
@@ -83,8 +84,7 @@
     </div>
 
     <div class="transport" id="liveBar" hidden>
-      <button type="button" class="key" id="btnSerial"><span>Connect DGS2</span></button>
-      <span class="live-state" id="serialState">Sensor not connected</span>
+      <span class="live-state" id="liveState"></span>
     </div>
 
     <button type="button" class="key icon" id="btnMark" title="Mark load: produce went in now. Baseline = the two minutes before" aria-label="Mark load"><i class="ph ph-flag" aria-hidden="true"></i></button>
@@ -97,6 +97,7 @@
 
 <script src="js/config.js"></script>
 <script src="js/icons.js"></script>
+<script src="js/feeds.js"></script>
 <script src="js/model.js"></script>
 <script src="js/data.js"></script>
 <script src="js/charts.js"></script>

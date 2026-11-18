@@ -1,2 +1,6 @@
 .DS_Store
 .claude/
+bridge/.env
+logs/
+__pycache__/
+*.pyc

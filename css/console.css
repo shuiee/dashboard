@@ -71,7 +71,12 @@ button, input, select { font: inherit; color: inherit; text-transform: inherit; 
 /* ---------- status line ---------- */
 .topbar { display: flex; align-items: center; gap: 20px; padding: 0 16px; }
 .ident { font-size: 12px; color: var(--ink-3); letter-spacing: 0.08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.clock { margin-left: auto; display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
+/* is this live? */
+.link { margin-left: auto; padding: 3px 8px; font-size: 11px; border: 1px solid var(--line-2); color: var(--ink-3); white-space: nowrap; }
+.link[data-s="live"] { background: var(--menu); border-color: var(--menu); color: var(--panel); }
+.link[data-s="stale"] { background: var(--caution); border-color: var(--caution); color: var(--on-caution); }
+.link[data-s="off"] { color: var(--ink); border-color: var(--ink-2); }
+.clock { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
 .clock .k { font-size: 11px; color: var(--ink-3); }
 .clock .v { font-size: 15px; color: var(--ink); font-variant-numeric: tabular-nums; }
 .master {
@@ -303,7 +308,7 @@ input[type="range"] { accent-color: var(--menu); flex: 1; min-width: 60px; }
 @media (max-width: 640px) {
   .ident { display: none; }
   .clock { margin-left: 0; }
-  .master { margin-left: auto; }
+  .master { margin-left: 0; }
   .menu { padding: 8px 10px; gap: 6px 8px; }
   .keys[role="tablist"] .key { min-width: 0; flex: 1; }
   .keys[role="tablist"] { flex: 1 1 100%; }

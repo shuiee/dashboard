@@ -1,8 +1,23 @@
 # Pod Telemetry Console
 
-Operator console for **Fresh Food Off Earth**: modular sealed pods, one fruit each, that sense the ethylene the fruit gives off, watch it with a camera, and run a small fan to flush the gas before ripening spreads.
+Live console for **Fresh Food Off Earth**: modular sealed pods, one fruit each, that sense the ethylene the fruit gives off, watch it with a camera, and run a small fan to flush the gas before ripening spreads.
 
-**Open it:** double-click `index.html`, or visit the GitHub Pages site at <https://shuiee.github.io/dashboard/>. No build step and no install.
+**Open it:** <https://shuiee.github.io/dashboard/>, or double-click `index.html`. No build step and no install.
+
+## Live data
+
+```
+DGS2  --USB-->  sensor laptop: bridge/dgs2_bridge.py  -->  Firebase Realtime Database  -->  this dashboard, on any device
+```
+
+- The **bridge** reads the DGS2 once a second (carriage return only, never a settings command), keeps every reading in `logs/`, and sends a 5-second average to Firebase. It holds readings while offline and sends them when the connection returns.
+- The **dashboard** loads the last 12 hours and updates as each reading arrives. The word next to the clock says what you are looking at: **Live**, **Stale** (no reading for 25 s), **No signal**, **Offline**, **Not set up**, or **Demo**.
+- **Mark the load** on the sensor laptop: type `l` and Enter in the bridge window when the produce goes in. Every viewer gets the same baseline (the two minutes before).
+- Pods with `live: true` in `js/config.js` get a feed; the others show *No sensor*.
+
+First-time setup (Firebase project, sensor account, security rules, sensor laptop): **[SETUP.md](SETUP.md)**.
+
+The **Demo** softkey replays Experiment 3 (rebuilt from the write-up) and three simulated pods, for when the sensor is not running. `?feed=practice` shows live mode with a made-up banana on your own computer.
 
 ## Two screens
 
@@ -35,7 +50,7 @@ One pod at a time: three boxed readouts (rise, ripening rate, fan), one chart of
 
 Replay and live controls sit in the same softkey row. Keyboard: `Space` play/pause, `1` to `4` select a pod, arrow keys jump 5 minutes. The flag key marks the moment produce went in.
 
-## Where the data comes from (please read before presenting)
+## Demo data (please read before presenting)
 
 - **POD-1 Banana** replays Experiment 3, phase D (one spotted banana, 167 g, closed bowl, four hours). It is **reconstructed from the values published in our experiment write-up** (baseline -146.7 ppb, rise of about 297 / 545 / 711 / 814 ppb at 1 / 2 / 3 / 4 h, the 1.7 &deg;C temperature swing, the humidity jump at 7:46:34 PM), not from the raw CSV. Drag the real CSV onto the console to replace it.
 - **POD-2 Apple, POD-3 Tomato, POD-4 Avocado are simulated.** They run the same fan rules the console shows, so their fan runs are what our logic would do, not measurements.
@@ -65,29 +80,26 @@ Taken from the Space Shuttle glass cockpit (MEDS) and NASA caution and warning p
 - **Mission elapsed time** is the only clock.
 - **Staleness is a caution**: in live mode, a sensor that stops reporting raises a notice.
 
-## Live hardware
+## Camera
 
-Press the **Live** softkey.
+The camera is separate from the cloud path. In live mode with POD-1 selected, the Ethylene screen shows a camera panel: enter the XIAO's IP from Serial Monitor and press *Connect*. The console fetches `http://<ip>/capture` every `camera.intervalS` seconds and runs the Teachable Machine model in `camera.modelUrl` on each frame. Browsers block `http://` cameras on `https://` pages, so this works when `index.html` is opened from the laptop on the camera's hotspot, not from GitHub Pages.
 
-**Ethylene sensor (DGS2 over USB).** Press *Connect DGS2* and pick the serial port (Chrome or Edge on a laptop). The console sends only a carriage return once a second, the documented single-read command, and never sends zero, calibration or settings commands. After a minute it takes a provisional baseline; press the **flag** key the moment the produce goes in.
-
-**Camera (XIAO ESP32S3).** Enter the IP from Serial Monitor and press *Connect*. The camera panel appears on the Ethylene screen with POD-1 selected. The console fetches `http://<ip>/capture` every `camera.intervalS` seconds and runs the Teachable Machine model in `camera.modelUrl` on each frame. Close the camera stream tab first, and keep the laptop on the same hotspot.
-
-> Browsers block `http://` cameras on `https://` pages, so the live camera works when you open `index.html` from your laptop, not from the GitHub Pages site. Replay works everywhere.
-
-**Logged CSV.** Drop a CSV from the logging script onto the page, or use the CSV key. Recognised headers: a time column (`time`, `timestamp`, `iso`, `epoch`, `elapsed`), `ppb` or `ethylene`, `temp`, and optionally `rh` or `humidity`, and `fan`. Scrub to the moment the produce went in and press the flag key.
+**Logged CSV.** In Demo, drop a CSV from the bridge's `logs/` (or the old logging script) onto the page, or use the CSV key. Recognised headers: a time column (`time`, `timestamp`, `iso`, `epoch`, `elapsed`), `ppb` or `ethylene`, `temp`, and optionally `rh` or `humidity`, and `fan`. Scrub to the moment the produce went in and press the flag key.
 
 ## Files
 
 ```
 index.html        layout
 css/console.css   display tokens, layout
-js/config.js      every threshold, the pods, sensor and camera settings
+js/config.js      every threshold, the pods, the database URL, camera settings
+js/feeds.js       live readings from Firebase (and the practice feed)
 js/icons.js       fruit icons (IconPark, Apache 2.0)
 js/model.js       Series (temperature correction, rates) and the rule set
 js/data.js        Experiment 3 reconstruction, simulated pods, CSV import
 js/charts.js      canvas chart
-js/live.js        DGS2 Web Serial reader and XIAO camera client
+js/live.js        XIAO camera client
+bridge/           dgs2_bridge.py (sensor laptop to Firebase) and .env.example
+firebase/         database.rules.json (public read, sensor-only write)
 js/app.js         wiring, replay clock, rendering
 ```
 

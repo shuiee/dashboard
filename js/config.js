@@ -21,8 +21,20 @@ FFOE.config = {
   },
 
   replay: {
-    startAtS: 7800,        // open the console at T+02:10 so there is history on screen
+    startAtS: 7800,        // open the demo at T+02:10 so there is history on screen
     speed: 10,
+  },
+
+  // Live data path:
+  //   DGS2 -> bridge/dgs2_bridge.py on the sensor laptop -> Firebase Realtime Database -> this page.
+  // Fill in databaseURL after creating the Firebase project (see SETUP.md). It is safe to publish:
+  // anyone may read readings, only the sensor account may write them (firebase/database.rules.json).
+  cloud: {
+    databaseURL: '',       // e.g. 'https://fresh-food-off-earth-default-rtdb.firebaseio.com'
+    historyHours: 12,      // how much past data a viewer loads when the page opens
+    pushS: 5,              // the bridge sends a 5 s average (bridge --push-every)
+    sdkApp: 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js',
+    sdkDatabase: 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js',
   },
 
   sensor: {
@@ -96,7 +108,9 @@ FFOE.config = {
 
   pods: [
     {
-      id: 'POD-1', fruit: 'Banana', note: 'Spotted, 167 g', source: 'replay',
+      // live: true = this pod has a real sensor publishing through the bridge.
+      // Add live: true to another pod when its sensor is running.
+      id: 'POD-1', fruit: 'Banana', note: 'Spotted, 167 g', source: 'replay', live: true,
       label: 'EXP-03 replay', loadT: 274, fan: false, cartridge: false, power: 'usb',
     },
     {
