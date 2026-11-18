@@ -514,9 +514,16 @@
   function renderCam() {
     const c = S.camState;
     $('camPanel').hidden = !(S.mode === 'live' && S.sel === 0);
-    const img = $('camImg');
     const hasPhoto = !!c.photo;
-    img.hidden = !hasPhoto;
+    let img = $('camImg');
+    if (hasPhoto && !img) {
+      // created only once a real frame exists, so there is never an empty image box
+      img = document.createElement('img');
+      img.id = 'camImg';
+      img.alt = 'Latest frame from the XIAO camera in POD-1';
+      $('camMsg').after(img);
+    }
+    if (img) img.hidden = !hasPhoto;
     $('camMsg').hidden = hasPhoto;
     if (hasPhoto && img.src !== c.photo) img.src = c.photo;
     if (!hasPhoto) $('camMsg').textContent = c.link === 'connecting' ? 'Connecting' : 'No camera';
