@@ -1,27 +1,27 @@
-# Pod Telemetry Console
+# RipeBy
 
-Live console for **Fresh Food Off Earth**: modular sealed pods, one fruit each, that sense the ethylene the fruit gives off, watch it with a camera, and run a small fan to flush the gas before ripening spreads.
+Live console for **Fresh Food Off Earth** (working name RipeBy): modular sealed pods, one fruit each, that sense the ethylene the fruit gives off, watch it with a camera, and run a small fan to flush the gas before ripening spreads.
 
 **Open it:** <https://shuiee.github.io/dashboard/>, or double-click `index.html`. No build step and no install.
 
 ## Live data
 
 ```
-DGS2  --USB-->  sensor laptop: bridge/dgs2_bridge.py  -->  Firebase Realtime Database  -->  this dashboard, on any device
+DGS2  --USB-->  sensor laptop: bridge/dgs2_bridge.py  -->  Supabase  -->  this dashboard, on any device
 ```
 
-- The **bridge** reads the DGS2 once a second (carriage return only, never a settings command), keeps every reading in `logs/`, and sends a 5-second average to Firebase. It holds readings while offline and sends them when the connection returns.
+- The **bridge** reads the DGS2 once a second (carriage return only, never a settings command), keeps every reading in `logs/`, and sends a 5-second average to Supabase. It holds readings while offline and sends them when the connection returns.
 - The **dashboard** loads the last 12 hours and updates as each reading arrives. The word next to the clock says what you are looking at: **Live**, **Stale** (no reading for 25 s), **No signal**, **Offline**, **Not set up**, or **Demo**.
 - **Mark the load** on the sensor laptop: type `l` and Enter in the bridge window when the produce goes in. Every viewer gets the same baseline (the two minutes before).
 - Pods with `live: true` in `js/config.js` get a feed; the others show *No sensor*.
 
-First-time setup (Firebase project, sensor account, security rules, sensor laptop): **[SETUP.md](SETUP.md)**.
+First-time setup (Supabase project, sensor account, tables and access rules, sensor laptop): **[SETUP.md](SETUP.md)**.
 
 The **Demo** softkey replays Experiment 3 (rebuilt from the write-up) and three simulated pods, for when the sensor is not running. `?feed=practice` shows live mode with a made-up banana on your own computer.
 
 ## Two screens
 
-Switch between them with the green softkeys at the bottom, like the menu row on a Shuttle display.
+Switch between them with the softkeys along the bottom edge.
 
 ### Crew
 
@@ -30,7 +30,7 @@ Built to be read in a few seconds, on the "dark cockpit" principle: nothing appe
 Each pod gets one tile, always in the same position, with just three things:
 
 1. **Eat order**: the boxed number in the corner (1 = eat first).
-2. **The fruit**: an icon inside a ring with tick marks, after the Shuttle's attitude indicator.
+2. **The fruit**: an icon over a wireframe globe and grid floor, after vector CRT navigation displays.
 3. **One word**: *Wait*, *Soon*, *Ready* or *Eat now* (inverse video).
 
 Everything else stays hidden until it needs someone:
@@ -70,13 +70,13 @@ Every decision has a reason the console can print.
 
 ## Display language
 
-Taken from the Space Shuttle glass cockpit (MEDS) and NASA caution and warning practice:
+After vector CRT spacecraft displays (the *Nostromo* screens, wireframe maps and globes) and NASA caution and warning practice:
 
-- **Deep violet screen, yellow line graphics, boxed digital readouts, green softkeys** along the bottom edge.
-- **Inverse video means "look at this"**: *Eat now* and cautions are yellow blocks. Red is kept for warnings (sensor fault, spoilage seen by the camera, temperature far out of range) and never used for decoration.
+- **Near-black screen, thin blue bracket frames, cyan text, green line graphics** for data and wireframes, faint scanlines. The fruit is the only yellow.
+- **Inverse video means "look at this"**: *Eat now* and cautions are solid blocks. Amber is for cautions; red is kept for warnings (sensor fault, spoilage seen by the camera, temperature far out of range) and never used for decoration.
 - **Master caution** lights for any new caution or warning and flashes until acknowledged. Reduced-motion settings replace flashing with an outline.
 - **Colour is never the only cue**: every state also carries a word.
-- **B612 Mono**, the typeface Airbus designed for cockpit displays, for every label and number.
+- **Michroma** for the few headline words, **Share Tech Mono** for every label and number.
 - **Mission elapsed time** is the only clock.
 - **Staleness is a caution**: in live mode, a sensor that stops reporting raises a notice.
 
@@ -91,21 +91,21 @@ The camera is separate from the cloud path. In live mode with POD-1 selected, th
 ```
 index.html        layout
 css/console.css   display tokens, layout
-js/config.js      every threshold, the pods, the database URL, camera settings
-js/feeds.js       live readings from Firebase (and the practice feed)
+js/config.js      every threshold, the pods, the Supabase URL and key, camera settings
+js/feeds.js       live readings from Supabase (and the practice feed)
 js/icons.js       fruit icons (IconPark, Apache 2.0)
 js/model.js       Series (temperature correction, rates) and the rule set
 js/data.js        Experiment 3 reconstruction, simulated pods, CSV import
 js/charts.js      canvas chart
 js/live.js        XIAO camera client
-bridge/           dgs2_bridge.py (sensor laptop to Firebase) and .env.example
-firebase/         database.rules.json (public read, sensor-only write)
+bridge/           dgs2_bridge.py (sensor laptop to Supabase) and .env.example
+supabase/         schema.sql (tables; public read, sensor-only write)
 js/app.js         wiring, replay clock, rendering
 ```
 
 ## Credits
 
-Typeface: [B612 Mono](https://github.com/polarsys/b612), Open Font License. Fruit icons: [IconPark](https://github.com/bytedance/IconPark) Outline by ByteDance, Apache License 2.0 (banana, apple-one, tomato, avocado), inlined unmodified in `js/icons.js`. Interface icons: [Phosphor](https://phosphoricons.com), MIT.
+Typefaces: [Michroma](https://fonts.google.com/specimen/Michroma) and [Share Tech Mono](https://fonts.google.com/specimen/Share+Tech+Mono), Open Font License. Fruit icons: [IconPark](https://github.com/bytedance/IconPark) Outline by ByteDance, Apache License 2.0 (banana, apple-one, tomato, avocado), inlined unmodified in `js/icons.js`. Interface icons: [Phosphor](https://phosphoricons.com), MIT.
 
 ## Open items
 

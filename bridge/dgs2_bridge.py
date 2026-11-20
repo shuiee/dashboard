@@ -2,7 +2,7 @@
 """
 dgs2_bridge.py: publishes live DGS2 ethylene readings to the dashboard.
 
-    DGS2 (USB serial) -> this script on the sensor laptop -> Firebase Realtime Database -> dashboard
+    DGS2 (USB serial) -> this script on the sensor laptop -> Supabase -> dashboard
 
 SAFETY: the only byte this script ever sends to the sensor is a carriage return (0x0D), the
 documented single-read command. It never sends zero, calibration or settings commands.
@@ -10,7 +10,7 @@ A stray command once changed the sensor's stored settings; keep it read-only.
 
 What it does
   * asks the sensor for one reading a second and saves every reading to a local CSV (logs/)
-  * every --push-every seconds, sends the average to Firebase (pods/<POD>/readings)
+  * every --push-every seconds, sends the average to Supabase (the readings table)
   * if the network drops, keeps the readings and sends them when it comes back
 
 While it runs, type a letter and press Enter:
@@ -24,8 +24,8 @@ Examples
   python3 bridge/dgs2_bridge.py --fake --dry-run          # no sensor, no network: test the loop
   python3 bridge/dgs2_bridge.py --fake                    # made-up readings to a real database
 
-Settings come from bridge/.env (copy bridge/.env.example). Only the standard library is used,
-plus pyserial for the real sensor (pip3 install pyserial).
+Settings come from bridge/.env (copy bridge/.env.example). Needs pyserial for the real sensor and
+certifi for secure connections on macOS:  pip3 install pyserial certifi
 """
 import argparse
 import csv
@@ -35,10 +35,12 @@ import math
 import os
 import queue
 import random
+import ssl
 import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -58,68 +60,97 @@ def load_env(path):
             os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
-# ---------------------------------------------------------------- Firebase (REST)
-class Firebase:
-    """Minimal Realtime Database client over REST, signed in as the sensor account."""
+# ---------------------------------------------------------------- Supabase (REST)
+def _tls_context():
+    """Python from python.org on macOS ships without trusted certificates; certifi supplies them."""
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
 
-    def __init__(self, db_url, api_key=None, email=None, password=None, dry_run=False):
-        self.db_url = (db_url or "").rstrip("/")
-        self.api_key, self.email, self.password = api_key, email, password
+
+TLS = _tls_context()
+
+
+class SignInError(Exception):
+    pass
+
+
+def _http_detail(e):
+    """Short reason from an HTTP error response."""
+    try:
+        body = json.loads(e.read().decode() or "{}")
+        msg = body.get("message") or body.get("msg") or body.get("error_description") or body.get("error")
+    except (ValueError, OSError, AttributeError):
+        msg = None
+    return "HTTP %s%s" % (e.code, ": " + str(msg) if msg else "")
+
+
+class Supabase:
+    """Minimal Supabase client over REST, signed in as the sensor account."""
+
+    def __init__(self, url, key=None, email=None, password=None, dry_run=False):
+        self.url = (url or "").rstrip("/")
+        self.key, self.email, self.password = key, email, password
         self.dry_run = dry_run
-        self.id_token = None
-        self.refresh_token = None
+        self.access = None
+        self.refresh = None
         self.expires = 0
 
-    def _post_json(self, url, body):
-        req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
-                                     headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=15) as r:
-            return json.loads(r.read().decode())
+    def _call(self, method, url, body, headers):
+        data = None if body is None else json.dumps(body, allow_nan=False).encode()
+        req = urllib.request.Request(url, data=data, method=method, headers=headers)
+        with urllib.request.urlopen(req, timeout=15, context=TLS) as r:
+            txt = r.read().decode()
+            return json.loads(txt) if txt.strip() else None
 
     def _token(self):
-        if not self.api_key:  # local emulator or open test database
-            return None
-        if self.id_token and time.time() < self.expires - 120:
-            return self.id_token
-        if self.refresh_token:
-            r = self._post_json("https://securetoken.googleapis.com/v1/token?key=" + self.api_key,
-                                {"grant_type": "refresh_token", "refresh_token": self.refresh_token})
-            self.id_token, self.refresh_token = r["id_token"], r["refresh_token"]
-            self.expires = time.time() + int(r["expires_in"])
-        else:
-            r = self._post_json(
-                "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=" + self.api_key,
-                {"email": self.email, "password": self.password, "returnSecureToken": True})
-            self.id_token, self.refresh_token = r["idToken"], r["refreshToken"]
-            self.expires = time.time() + int(r["expiresIn"])
-        return self.id_token
+        if self.access and time.time() < self.expires - 120:
+            return self.access
+        h = {"apikey": self.key, "Content-Type": "application/json"}
+        auth = self.url + "/auth/v1/token?grant_type="
+        try:
+            if self.refresh:
+                try:
+                    r = self._call("POST", auth + "refresh_token", {"refresh_token": self.refresh}, h)
+                except urllib.error.HTTPError:
+                    self.refresh = None  # expired or already used: sign in again
+                    return self._token()
+            else:
+                r = self._call("POST", auth + "password", {"email": self.email, "password": self.password}, h)
+        except urllib.error.HTTPError as e:
+            raise SignInError("could not sign in as %s (%s)" % (self.email, _http_detail(e)))
+        self.access, self.refresh = r["access_token"], r["refresh_token"]
+        self.expires = time.time() + int(r.get("expires_in", 3600))
+        return self.access
 
-    def request(self, method, path, body):
+    def request(self, method, path, body, prefer="return=minimal"):
         if self.dry_run:
             print("  [dry run] %s %s %s" % (method, path, json.dumps(body)))
-            return {}
-        root, _, query = self.db_url.partition("?")  # the local emulator uses ?ns=<project>
-        params = [query] if query else []
-        tok = self._token()
-        if tok:
-            params.append("auth=" + tok)
-        url = "%s/%s.json" % (root, path) + ("?" + "&".join(params) if params else "")
-        req = urllib.request.Request(url, data=json.dumps(body).encode(), method=method,
-                                     headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=15) as r:
-            return json.loads(r.read().decode() or "null")
+            return None
+        h = {"apikey": self.key, "Authorization": "Bearer " + self._token(),
+             "Content-Type": "application/json", "Prefer": prefer}
+        return self._call(method, self.url + "/rest/v1/" + path, body, h)
 
 
 class Outbox(threading.Thread):
     """Sends writes in order; on failure waits and retries, so nothing is lost while offline."""
 
-    def __init__(self, fb):
+    def __init__(self, db):
         super().__init__(daemon=True)
-        self.fb, self.q, self.pending = fb, queue.Queue(), None
+        self.db, self.q, self.pending = db, queue.Queue(), None
         self.online = True
 
-    def put(self, method, path, body):
-        self.q.put((method, path, body))
+    def put(self, method, path, body, prefer="return=minimal"):
+        self.q.put((method, path, body, prefer))
+
+    def _retry_later(self, why, wait):
+        if self.online:
+            print("  %s; will keep retrying (every reading is still in the log)" % why)
+        self.online = False
+        time.sleep(wait)
+        return min(wait * 2, 60)
 
     def run(self):
         wait = 2
@@ -127,17 +158,24 @@ class Outbox(threading.Thread):
             item = self.pending or self.q.get()
             self.pending = item
             try:
-                self.fb.request(*item)
+                self.db.request(*item)
                 self.pending = None
                 if not self.online:
-                    print("  network back, sending queued readings")
+                    print("  sending again; queued readings are going out")
                 self.online, wait = True, 2
+            except SignInError as e:
+                wait = self._retry_later(str(e), wait)
+            except urllib.error.HTTPError as e:
+                if e.code == 400:  # the database rejected this row; retrying would block the rest
+                    print("  the database rejected a write (%s); skipped it" % _http_detail(e))
+                    self.pending = None
+                    continue
+                wait = self._retry_later("the database refused a write (%s)" % _http_detail(e), wait)
             except (urllib.error.URLError, OSError, KeyError, ValueError) as e:
-                if self.online:
-                    print("  could not reach Firebase (%s); will keep retrying" % e)
-                self.online = False
-                time.sleep(wait)
-                wait = min(wait * 2, 60)
+                why = "could not reach Supabase (%s)" % e
+                if "CERTIFICATE_VERIFY_FAILED" in str(e):
+                    why += ". Fix: pip3 install certifi"
+                wait = self._retry_later(why, wait)
 
     def backlog(self):
         return self.q.qsize() + (1 if self.pending else 0)
@@ -152,6 +190,8 @@ def parse_dgs2(line):
     try:
         ppb, temp, rh = float(parts[1]), float(parts[2]), float(parts[3])
     except ValueError:
+        return None
+    if not all(math.isfinite(v) for v in (ppb, temp, rh)):
         return None
     if abs(temp) > 100:  # some firmware reports hundredths
         temp /= 100.0
@@ -220,20 +260,24 @@ def main():
     a = ap.parse_args()
 
     load_env(a.env)
-    db_url = os.environ.get("FIREBASE_DB_URL", "")
-    if not a.dry_run and not db_url:
-        sys.exit("FIREBASE_DB_URL is not set. Copy bridge/.env.example to bridge/.env and fill it in.")
+    db_url = os.environ.get("SUPABASE_URL", "")
+    if not a.dry_run:
+        missing = [k for k in ("SUPABASE_URL", "SUPABASE_KEY", "SENSOR_EMAIL", "SENSOR_PASSWORD")
+                   if not os.environ.get(k)]
+        if missing:
+            sys.exit("%s not set. Copy bridge/.env.example to bridge/.env and fill it in (see SETUP.md)."
+                     % (", ".join(missing) + (" is" if len(missing) == 1 else " are")))
     if not a.fake and not a.port:
         sys.exit("Give the sensor port with --port (find it with: ls /dev/tty.usb*), or use --fake.")
 
-    fb = Firebase(db_url, os.environ.get("FIREBASE_API_KEY"), os.environ.get("SENSOR_EMAIL"),
+    db = Supabase(db_url, os.environ.get("SUPABASE_KEY"), os.environ.get("SENSOR_EMAIL"),
                   os.environ.get("SENSOR_PASSWORD"), dry_run=a.dry_run)
-    out = Outbox(fb)
+    out = Outbox(db)
     out.start()
 
     sensor = FakeSensor() if a.fake else DGS2(a.port)
     pod = a.pod
-    base = "pods/" + pod
+    this_pod = "pods?id=eq." + urllib.parse.quote(pod)
 
     os.makedirs(a.logs, exist_ok=True)
     stamp = dt.datetime.now().strftime("%Y-%m-%d_%H%M")
@@ -242,11 +286,12 @@ def main():
     log = csv.writer(log_f)
     log.writerow(["time", "epoch_ms", "ppb", "temp_c", "rh", "raw"])
 
-    meta = {"sensor": "FAKE" if a.fake else "DGS2", "startedAt": int(time.time() * 1000),
+    # Create or update this pod's row (columns not listed here, like load_t, are kept)
+    meta = {"id": pod, "sensor": "FAKE" if a.fake else "DGS2", "started_at": int(time.time() * 1000),
             "bridge": "dgs2_bridge.py"}
     if a.fruit:
         meta["fruit"] = a.fruit.lower()
-    out.put("PATCH", base + "/meta", meta)
+    out.put("POST", "pods", meta, prefer="resolution=merge-duplicates,return=minimal")
 
     cmds = queue.Queue()
 
@@ -278,7 +323,7 @@ def main():
                 log_f.flush()
                 buf.append(r)
                 if not serial_sent and getattr(sensor, "serial_no", None):
-                    out.put("PATCH", base + "/meta", {"serial": sensor.serial_no})
+                    out.put("PATCH", this_pod, {"serial": sensor.serial_no})
                     serial_sent = True
             else:
                 missed += 1
@@ -291,13 +336,14 @@ def main():
                 if buf:
                     n = len(buf)
                     avg = {
+                        "pod": pod,
                         "t": now_ms,
                         "ppb": round(sum(x["ppb"] for x in buf) / n, 1),
                         "temp": round(sum(x["temp"] for x in buf) / n, 3),
                         "rh": round(sum(x["rh"] for x in buf) / n, 1),
                         "n": n,
                     }
-                    out.put("POST", base + "/readings", avg)
+                    out.put("POST", "readings", avg)
                     print("%s  %7.1f ppb  %5.2f C  %4.1f %%RH  (n=%d, queued %d)" % (
                         dt.datetime.now().strftime("%H:%M:%S"), avg["ppb"], avg["temp"], avg["rh"], n,
                         out.backlog()))
@@ -306,10 +352,10 @@ def main():
             while not cmds.empty():
                 c = cmds.get()
                 if c == "l":
-                    out.put("PATCH", base + "/meta", {"loadT": now_ms})
+                    out.put("PATCH", this_pod, {"load_t": now_ms})
                     print("  load marked at %s" % dt.datetime.now().strftime("%H:%M:%S"))
                 elif c == "c":
-                    out.put("PATCH", base + "/meta", {"loadT": None})
+                    out.put("PATCH", this_pod, {"load_t": None})
                     print("  load mark cleared")
                 elif c == "q":
                     raise KeyboardInterrupt

@@ -8,7 +8,7 @@ window.FFOE = window.FFOE || {};
 
 FFOE.config = {
   mission: {
-    name: 'Fresh Food Off Earth',
+    name: 'RipeBy',
     console: 'Produce pod telemetry',
     repo: 'https://github.com/shuiee/dashboard',
   },
@@ -26,15 +26,15 @@ FFOE.config = {
   },
 
   // Live data path:
-  //   DGS2 -> bridge/dgs2_bridge.py on the sensor laptop -> Firebase Realtime Database -> this page.
-  // Fill in databaseURL after creating the Firebase project (see SETUP.md). It is safe to publish:
-  // anyone may read readings, only the sensor account may write them (firebase/database.rules.json).
+  //   DGS2 -> bridge/dgs2_bridge.py on the sensor laptop -> Supabase -> this page.
+  // Fill in url and key after creating the Supabase project (see SETUP.md). Both are safe to
+  // publish: anyone may read readings, only the sensor account may write them (supabase/schema.sql).
   cloud: {
-    databaseURL: '',       // e.g. 'https://fresh-food-off-earth-default-rtdb.firebaseio.com'
+    url: 'https://btwqapyikyjubvrwznpz.supabase.co', // Project URL, e.g. 'https://abcdefghijklmnop.supabase.co'
+    key: 'sb_publishable_DqunAp1iVN9v56kmQMo4vA_9DmKjmyC', // publishable key (sb_publishable_...) or the legacy anon key
     historyHours: 12,      // how much past data a viewer loads when the page opens
     pushS: 5,              // the bridge sends a 5 s average (bridge --push-every)
-    sdkApp: 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js',
-    sdkDatabase: 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js',
+    sdk: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js',
   },
 
   sensor: {

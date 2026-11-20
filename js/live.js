@@ -3,7 +3,7 @@
  * Hardware adapters.
  *
  * The ethylene sensor is read by bridge/dgs2_bridge.py on the sensor laptop, which
- * publishes to Firebase; the page reads it through js/feeds.js.
+ * publishes to Supabase; the page reads it through js/feeds.js.
  *
  * Camera: polls the XIAO ESP32S3 CameraWebServer /capture endpoint and can run the
  * team's Teachable Machine model on each frame.
